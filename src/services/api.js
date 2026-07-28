@@ -1,6 +1,6 @@
 // API REST Service Client for React
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const getToken = () => localStorage.getItem('uninassau_jwt_token');
 export const setToken = (token) => localStorage.setItem('uninassau_jwt_token', token);

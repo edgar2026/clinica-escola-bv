@@ -2,5 +2,7 @@ node_modules/
 backend/node_modules/
 dist/
 .env
-.env.examplescripts/
+.env.example
+scripts/
+backend/database.sqlite
 backend/database.sqlite
