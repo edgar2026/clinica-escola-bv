@@ -1,8 +1,51 @@
+# Dependencies
 node_modules/
-backend/node_modules/
+
+# Build output
 dist/
+
+# Environment variables
 .env
-.env.example
-scripts/
-backend/database.sqlite
-backend/database.sqlite
+.env.local
+.env.*.local
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Backups
+*.backup
+*.bak
+
+# Test scripts (disposable)
+scripts/test-*
+scripts/test_*
+scripts/audit_tables.sql
+
+# Old backend (not used)
+backend/
+
+# Tasks / tracking
+tasks.json
+
+# Documentation with credentials
+DOCUMENTACAO_COMPLETA.md
+
+# OpenCode config (contains tokens)
+opencode.json
+opencode.json.backup
