@@ -6,11 +6,10 @@ import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { GestaoUsuariosPage } from './GestaoUsuariosPage';
 import { GradeSemanalPage } from './GradeSemanalPage';
 import {
-  Plus, Trash2, Edit2, ChevronRight, BookOpen, Calendar,
-  Clock, Shield, Users, AlertTriangle, Settings,
+  Plus, Trash2, Edit2, AlertTriangle,
   Save
 } from 'lucide-react';
-import type { ReactNode, ComponentType } from 'react';
+import type { ReactNode } from 'react';
 import type { ToastMessage } from '../../types';
 
 interface DiaSemana {
@@ -26,90 +25,6 @@ const DIAS_SEMANA: DiaSemana[] = [
   { id: 5, nome: 'Sexta-feira' },
   { id: 6, nome: 'Sabado' },
 ];
-
-interface CategoryItem {
-  id: string;
-  label: string;
-}
-
-interface Category {
-  label: string;
-  icon: ComponentType<{ size?: string | number; color?: string; style?: React.CSSProperties }>;
-  items: CategoryItem[];
-}
-
-const CATEGORIES: Category[] = [
-  {
-    label: 'Gestao de Acesso',
-    icon: Shield,
-    items: [
-      { id: 'usuarios', label: 'Usuarios do Sistema' },
-    ],
-  },
-  {
-    label: 'Dados Basicos',
-    icon: BookOpen,
-    items: [
-      { id: 'cursos', label: 'Cursos' },
-      { id: 'periodos', label: 'Periodos' },
-      { id: 'turnos', label: 'Turnos' },
-    ],
-  },
-  {
-    label: 'Corpo Docente',
-    icon: Users,
-    items: [
-      { id: 'supervisores', label: 'Supervisores' },
-    ],
-  },
-  {
-    label: 'Horarios de Funcionamento',
-    icon: Clock,
-    items: [
-      { id: 'horarios', label: 'Dias e Horarios' },
-      { id: 'duracao_atendimento', label: 'Duracao dos Atendimentos' },
-      { id: 'vagas_horarios', label: 'Vagas por Horario' },
-    ],
-  },
-  {
-    label: 'Regras de Negocio',
-    icon: Shield,
-    items: [
-      { id: 'limite_semanal', label: 'Limite Semanal' },
-      { id: 'datas_vigencia', label: 'Datas de Vigencia' },
-      { id: 'tolerancia_atraso', label: 'Tolerancia de Atraso' },
-      { id: 'regras_agendamento', label: 'Regras de Presenca' },
-    ],
-  },
-  {
-    label: 'Calendario',
-    icon: Calendar,
-    items: [
-      { id: 'feriados', label: 'Feriados' },
-      { id: 'recessos', label: 'Recessos' },
-      { id: 'bloqueios', label: 'Datas Bloqueadas' },
-    ],
-  },
-  {
-    label: 'Grade Semanal',
-    icon: Calendar,
-    items: [
-      { id: 'grade_semanal', label: 'Configurar Grade' },
-    ],
-  },
-];
-
-const SIDEBAR_STYLE: React.CSSProperties = {
-  width: 220,
-  flexShrink: 0,
-  background: 'var(--bg-card)',
-  border: '1px solid var(--border-color)',
-  borderRadius: 12,
-  overflow: 'hidden',
-  alignSelf: 'flex-start',
-  position: 'sticky',
-  top: 0,
-};
 
 const INPUT_STYLE: React.CSSProperties = {
   width: '100%',
@@ -735,7 +650,7 @@ const PanelVagasHorarios = ({ showToast }: PanelProps) => {
   const opcoesDias = DIAS_SEMANA.map(d => ({ value: d.id, label: d.nome }));
 
   const getSetorNome = (_v: unknown, item: Record<string, unknown>): string => {
-    return (item.setor_nome as string) || (fixedSetor?.nome as string) || 'Clínica de Psicologia';
+    return (item.setor_nome as string) || (fixedSetor?.nome as string) || 'Clinica de Psicologia';
   };
   const getSupervisorNome = (_v: unknown, item: Record<string, unknown>): string => {
     const supervisor = item.supervisor_id ? supervisores.find(s => s.id === item.supervisor_id) : null;
@@ -1046,16 +961,60 @@ const PanelRegrasAgendamento = ({ regras, onSalvar }: PanelRegrasProps) => {
     </div>
   );
 };
+
 interface Regra {
   chave: string;
   valor: string;
 }
 
-export const ConfiguracoesPage = () => {
+interface ConfiguracoesPageProps {
+  section?: string;
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  'gestao-usuarios': 'Gestao de Usuarios',
+  'config-cursos': 'Cursos',
+  'config-periodos': 'Periodos',
+  'config-turnos': 'Turnos',
+  'config-supervisores': 'Supervisores',
+  'config-horarios': 'Dias e Horarios',
+  'config-duracao-atendimento': 'Duracao dos Atendimentos',
+  'config-vagas-horarios': 'Vagas por Horario',
+  'config-limite-semanal': 'Limite Semanal',
+  'config-datas-vigencia': 'Datas de Vigencia',
+  'config-tolerancia-atraso': 'Tolerancia de Atraso',
+  'config-regras-agendamento': 'Regras de Presenca',
+  'config-feriados': 'Feriados',
+  'config-recessos': 'Recessos',
+  'config-bloqueios': 'Datas Bloqueadas',
+  'config-grade-semanal': 'Configurar Grade',
+};
+
+const SECTION_TO_CONFIG: Record<string, string> = {
+  'gestao-usuarios': 'usuarios',
+  'config-cursos': 'cursos',
+  'config-periodos': 'periodos',
+  'config-turnos': 'turnos',
+  'config-supervisores': 'supervisores',
+  'config-horarios': 'horarios',
+  'config-duracao-atendimento': 'duracao_atendimento',
+  'config-vagas-horarios': 'vagas_horarios',
+  'config-limite-semanal': 'limite_semanal',
+  'config-datas-vigencia': 'datas_vigencia',
+  'config-tolerancia-atraso': 'tolerancia_atraso',
+  'config-regras-agendamento': 'regras_agendamento',
+  'config-feriados': 'feriados',
+  'config-recessos': 'recessos',
+  'config-bloqueios': 'bloqueios',
+  'config-grade-semanal': 'grade_semanal',
+};
+
+export const ConfiguracoesPage = ({ section }: ConfiguracoesPageProps) => {
   const { showToast } = useAuth();
-  const [activeItem, setActiveItem] = useState('cursos');
   const [regras, setRegras] = useState<Record<string, string>>({});
   const [loadingRegras, setLoadingRegras] = useState(true);
+
+  const configKey = SECTION_TO_CONFIG[section || ''] || 'cursos';
 
   const carregarRegras = useCallback(async () => {
     setLoadingRegras(true);
@@ -1086,11 +1045,11 @@ export const ConfiguracoesPage = () => {
   };
 
   const renderPanel = () => {
-    if (loadingRegras && ['duracao_atendimento', 'limite_semanal', 'datas_vigencia', 'tolerancia_atraso', 'regras_agendamento'].includes(activeItem)) {
+    if (loadingRegras && ['duracao_atendimento', 'limite_semanal', 'datas_vigencia', 'tolerancia_atraso', 'regras_agendamento'].includes(configKey)) {
       return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Carregando configuracoes...</div>;
     }
 
-    switch (activeItem) {
+    switch (configKey) {
       case 'usuarios': return <GestaoUsuariosPage />;
       case 'cursos': return <PanelCursos showToast={showToast} />;
       case 'periodos': return <PanelPeriodos showToast={showToast} />;
@@ -1106,75 +1065,20 @@ export const ConfiguracoesPage = () => {
       case 'feriados': return <PanelFeriados showToast={showToast} />;
       case 'recessos': return <PanelRecessos showToast={showToast} />;
       case 'bloqueios': return <PanelBloqueios showToast={showToast} />;
-      case 'grade_semanal':
-        return <GradeSemanalPage />;
+      case 'grade_semanal': return <GradeSemanalPage />;
       default: return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Selecione um item no menu ao lado.</div>;
     }
   };
 
-  const activeLabel = CATEGORIES.flatMap(c => c.items).find(i => i.id === activeItem)?.label || '';
+  const label = SECTION_LABELS[section || ''] || 'Configuracoes';
 
   return (
     <section>
       <div className="page-header">
-        <h1 className="page-title">Configuracoes do Sistema</h1>
-        <p className="page-subtitle">Gerencie todas as configuracoes administrativas do sistema clinica-escola.</p>
+        <h1 className="page-title">{label}</h1>
+        <p className="page-subtitle">Gerencie as configuracoes administrativas do sistema clinica-escola.</p>
       </div>
-
-      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-        <div style={SIDEBAR_STYLE}>
-          <div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid var(--border-color)', background: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Settings size={16} color="#FFF" />
-            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#FFF' }}>Configuracoes</span>
-          </div>
-          <nav style={{ padding: '0.5rem 0' }}>
-            {CATEGORIES.map((cat) => {
-              return (
-                <div key={cat.label}>
-                  <div style={{ padding: '0.65rem 1rem 0.35rem', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
-                    {cat.label}
-                  </div>
-                  {cat.items.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveItem(item.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        width: '100%',
-                        padding: '0.5rem 1rem',
-                        border: 'none',
-                        background: activeItem === item.id ? 'rgba(0,43,73,0.08)' : 'transparent',
-                        color: activeItem === item.id ? 'var(--primary)' : 'var(--text-muted)',
-                        fontSize: '0.82rem',
-                        fontWeight: activeItem === item.id ? 700 : 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        borderLeft: activeItem === item.id ? '3px solid var(--secondary)' : '3px solid transparent',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <ChevronRight size={12} style={{ opacity: activeItem === item.id ? 1 : 0.4 }} />
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            <Settings size={14} />
-            <span>Configuracoes</span>
-            <ChevronRight size={14} />
-            <strong style={{ color: 'var(--primary)' }}>{activeLabel}</strong>
-          </div>
-          {renderPanel()}
-        </div>
-      </div>
+      {renderPanel()}
     </section>
   );
 };

@@ -18,11 +18,18 @@ const EspelhoPontoPage = lazy(() => import('./pages/aluno/EspelhoPontoPage').the
 const GerenciaDashboardPage = lazy(() => import('./pages/gerencia/GerenciaDashboardPage').then(m => ({ default: m.GerenciaDashboardPage })));
 const RelatoriosPage = lazy(() => import('./pages/gerencia/RelatoriosPage').then(m => ({ default: m.RelatoriosPage })));
 const ConfiguracoesPage = lazy(() => import('./pages/admin/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })));
-const GestaoUsuariosPage = lazy(() => import('./pages/admin/GestaoUsuariosPage').then(m => ({ default: m.GestaoUsuariosPage })));
 
 const ALUNO_TABS = ['dashboard-aluno', 'calendario-vagas', 'grade-semanal-aluno', 'meu-horario-firmado', 'espelho-ponto', 'registro-ponto'];
 const GERENCIA_TABS = ['dashboard-gerencia', 'relatorios'];
-const ADMIN_TABS = ['dashboard-gerencia', 'admin-configuracoes', 'gestao-usuarios'];
+const CONFIG_TABS = [
+  'gestao-usuarios',
+  'config-cursos', 'config-periodos', 'config-turnos', 'config-supervisores',
+  'config-horarios', 'config-duracao-atendimento', 'config-vagas-horarios',
+  'config-limite-semanal', 'config-datas-vigencia', 'config-tolerancia-atraso', 'config-regras-agendamento',
+  'config-feriados', 'config-recessos', 'config-bloqueios',
+  'config-grade-semanal',
+];
+const ADMIN_TABS = ['dashboard-gerencia', ...CONFIG_TABS];
 
 function isTabValidForProfile(tab: string, perfil: string): boolean {
   if (perfil === 'aluno') return ALUNO_TABS.includes(tab);
@@ -90,8 +97,10 @@ const MainLayout: React.FC = () => {
             {activeTab === 'registro-ponto' && <RegistroPontoPage />}
             {activeTab === 'dashboard-gerencia' && <GerenciaDashboardPage />}
             {activeTab === 'relatorios' && <RelatoriosPage />}
-            {activeTab === 'admin-configuracoes' && <ConfiguracoesPage />}
-            {activeTab === 'gestao-usuarios' && <GestaoUsuariosPage />}
+            {activeTab === 'gestao-usuarios' && <ConfiguracoesPage section="gestao-usuarios" />}
+            {CONFIG_TABS.filter(t => t.startsWith('config-')).includes(activeTab) && (
+              <ConfiguracoesPage section={activeTab} />
+            )}
           </Suspense>
           </ErrorBoundary>
         </main>

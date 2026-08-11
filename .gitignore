@@ -49,3 +49,10 @@ DOCUMENTACAO_COMPLETA.md
 # OpenCode config (contains tokens)
 opencode.json
 opencode.json.backup
+
+# Private env docs
+VERCEL_ENV.md
+CONFIGURACAO_PRIVADA_DEPLOY.md
+
+# Internal docs
+CONTEXTO_SISTEMA.md
