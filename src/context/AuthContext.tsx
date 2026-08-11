@@ -6,6 +6,17 @@ import type { User } from '@supabase/supabase-js';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const clearSupabaseAuth = () => {
+  try {
+    const keys = Object.keys(localStorage);
+    for (const key of keys) {
+      if (key.startsWith('sb-') || key.includes('supabase')) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
@@ -17,34 +28,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const fetchProfile = async (authUser?: User) => {
+  const fetchProfile = async (authUser?: User): Promise<boolean> => {
     try {
       const { profile } = await authService.getMe(authUser);
       if (profile) {
         setUsuario(profile);
-      } else {
-        setUsuario(null);
+        return true;
       }
+      setUsuario(null);
+      return false;
     } catch {
       setUsuario(null);
+      return false;
     }
   };
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION') {
-        if (session) {
-          await fetchProfile();
+      try {
+        if (event === 'INITIAL_SESSION') {
+          if (session) {
+            const ok = await fetchProfile();
+            if (!ok) {
+              await supabase.auth.signOut({ scope: 'local' });
+              clearSupabaseAuth();
+              setUsuario(null);
+            }
+          } else {
+            setUsuario(null);
+          }
+          return;
         }
-        initializingRef.current = false;
-        setLoading(false);
-        return;
-      }
 
-      if (event === 'SIGNED_IN' && session) {
-        await fetchProfile();
-      } else if (event === 'SIGNED_OUT') {
+        if (event === 'SIGNED_IN' && session) {
+          await fetchProfile();
+        } else if (event === 'SIGNED_OUT') {
+          setUsuario(null);
+        }
+      } catch {
         setUsuario(null);
+      } finally {
+        if (event === 'INITIAL_SESSION') {
+          initializingRef.current = false;
+          setLoading(false);
+        }
       }
     });
 
@@ -60,6 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     authService.logout();
     setUsuario(null);
+    clearSupabaseAuth();
     showToast('Sessao encerrada.', 'info');
   };
 
