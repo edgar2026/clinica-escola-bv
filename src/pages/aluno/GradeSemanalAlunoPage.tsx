@@ -162,11 +162,23 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       const effectiveConfigId = grade?.config_id || status.config_id;
 
       if (effectiveConfigId) {
-        const { data: slotsData, error: errSlots } = await supabase
+        const { data: alunoData } = await supabase
+          .from('alunos')
+          .select('curso_id')
+          .eq('id', id)
+          .single();
+
+        let query = supabase
           .from('vagas_horarios')
           .select('*, setores(nome)')
           .eq('status', 'ativo')
-          .eq('config_id', effectiveConfigId)
+          .or(`config_id.eq.${effectiveConfigId},config_id.is.null`);
+
+        if (alunoData?.curso_id) {
+          query = query.or(`curso_id.eq.${alunoData.curso_id},curso_id.is.null`);
+        }
+
+        const { data: slotsData, error: errSlots } = await query
           .order('dia_semana', { ascending: true })
           .order('hora_inicio', { ascending: true });
 

@@ -125,3 +125,130 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 GRANT EXECUTE ON FUNCTION atualizar_aluno_admin(integer, integer, integer, integer, integer, integer, text, integer) TO authenticated;
+
+
+-- 3. Atualiza obter_grade_aluno para verificar compatibilidade de vagas e config_id flexível
+CREATE OR REPLACE FUNCTION obter_grade_aluno(p_aluno_id integer)
+RETURNS json AS $$
+DECLARE
+  v_aluno RECORD;
+  v_config RECORD;
+  v_selecoes json;
+  v_confirmado boolean := false;
+  v_carga_horaria integer;
+  v_config_id integer;
+  v_slots_publicados boolean := false;
+  v_faltam_campos text[];
+BEGIN
+  SELECT id, curso_id, periodo_id, turno_id, situacao, carga_horaria_semanal_max
+  INTO v_aluno
+  FROM alunos
+  WHERE id = p_aluno_id;
+
+  IF NOT FOUND THEN
+    RETURN json_build_object(
+      'sucesso', false,
+      'tem_grade', false,
+      'mensagem', 'Aluno não encontrado.'
+    );
+  END IF;
+
+  v_faltam_campos := ARRAY[]::text[];
+
+  IF v_aluno.carga_horaria_semanal_max IS NULL OR v_aluno.carga_horaria_semanal_max <= 0 THEN
+    v_faltam_campos := array_append(v_faltam_campos, 'Carga horária semanal');
+  END IF;
+  IF v_aluno.curso_id IS NULL THEN
+    v_faltam_campos := array_append(v_faltam_campos, 'Curso');
+  END IF;
+  IF v_aluno.periodo_id IS NULL THEN
+    v_faltam_campos := array_append(v_faltam_campos, 'Período');
+  END IF;
+  IF v_aluno.turno_id IS NULL THEN
+    v_faltam_campos := array_append(v_faltam_campos, 'Turno');
+  END IF;
+  IF v_aluno.situacao != 'ativo' THEN
+    v_faltam_campos := array_append(v_faltam_campos, 'Vínculo acadêmico ativo (situação atual: ' || v_aluno.situacao || ')');
+  END IF;
+
+  v_carga_horaria := COALESCE(v_aluno.carga_horaria_semanal_max, 4);
+
+  SELECT config_id INTO v_config_id
+  FROM grade_semanal_selecoes
+  WHERE aluno_id = p_aluno_id
+  ORDER BY id DESC
+  LIMIT 1;
+
+  IF v_config_id IS NULL THEN
+    SELECT id INTO v_config_id
+    FROM grade_semanal_config
+    WHERE status = 'ativa'
+    ORDER BY criado_em DESC
+    LIMIT 1;
+  END IF;
+
+  IF v_config_id IS NULL THEN
+    RETURN json_build_object(
+      'tem_grade', false,
+      'bloqueado', true,
+      'campos_pendentes', v_faltam_campos,
+      'mensagem', 'Nenhuma grade semanal configurada no momento.',
+      'categoria_carga', v_carga_horaria
+    );
+  END IF;
+
+  SELECT id, inscricao_inicio, inscricao_fim, vigencia_inicio, vigencia_fim
+  INTO v_config
+  FROM grade_semanal_config
+  WHERE id = v_config_id;
+
+  SELECT EXISTS (
+    SELECT 1 FROM vagas_horarios
+    WHERE (config_id = v_config_id OR config_id IS NULL)
+      AND status = 'ativo'
+      AND (curso_id = v_aluno.curso_id OR curso_id IS NULL)
+  ) INTO v_slots_publicados;
+
+  IF NOT v_slots_publicados THEN
+    v_faltam_campos := array_append(v_faltam_campos, 'Horários compatíveis ativos e publicados para este período');
+  END IF;
+
+  SELECT json_agg(json_build_object(
+    'id', gs.id,
+    'vaga_horario_id', gs.vaga_horario_id,
+    'dia_semana', gs.dia_semana,
+    'hora_inicio', gs.hora_inicio,
+    'hora_fim', gs.hora_fim,
+    'confirmado', gs.confirmado,
+    'setor_nome', vh.setor_id,
+    'capacidade_max', vh.capacidade_max,
+    'vagas_disponiveis', vh.vagas_disponiveis
+  )) INTO v_selecoes
+  FROM grade_semanal_selecoes gs
+  JOIN vagas_horarios vh ON vh.id = gs.vaga_horario_id
+  WHERE gs.aluno_id = p_aluno_id AND gs.config_id = v_config_id;
+
+  SELECT confirmado INTO v_confirmado
+  FROM grade_semanal_selecoes
+  WHERE aluno_id = p_aluno_id AND config_id = v_config_id AND confirmado = true
+  LIMIT 1;
+
+  RETURN json_build_object(
+    'sucesso', true,
+    'tem_grade', v_selecoes IS NOT NULL AND json_array_length(v_selecoes) > 0,
+    'confirmado', COALESCE(v_confirmado, false),
+    'selecoes', COALESCE(v_selecoes, '[]'::json),
+    'config_id', v_config.id,
+    'inscricao_inicio', v_config.inscricao_inicio,
+    'inscricao_fim', v_config.inscricao_fim,
+    'vigencia_inicio', v_config.vigencia_inicio,
+    'vigencia_fim', v_config.vigencia_fim,
+    'categoria_carga', v_carga_horaria,
+    'campos_pendentes', v_faltam_campos,
+    'pode_exibir_grade', (array_length(v_faltam_campos, 1) IS NULL)
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION obter_grade_aluno(integer) TO authenticated;
+
