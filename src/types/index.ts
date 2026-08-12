@@ -393,6 +393,7 @@ export interface CategoriaCargaHoraria {
 
 export interface UsuarioComAluno extends Usuario {
   aluno_id?: number;
+  carga_horaria_semanal?: number;
   categoria_carga_id?: number;
   categoria_carga_horas?: number;
   periodo_id?: string;

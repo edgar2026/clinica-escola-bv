@@ -21,10 +21,9 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab: _setActiveTab }: { setActi
     setLoading(true);
     try {
       const alunoId = await getAlunoId();
-      const { data: aluno } = await supabase.from('alunos').select('categoria_carga').eq('id', alunoId).single();
-      if (aluno?.categoria_carga) {
-        setCargaMax(Number(aluno.categoria_carga));
-      }
+      const { data: aluno } = await supabase.from('alunos').select('carga_horaria_semanal_max, categoria_carga').eq('id', alunoId).single();
+      const cMax = Number(aluno?.carga_horaria_semanal_max) || Number(aluno?.categoria_carga) || 4;
+      setCargaMax(cMax);
 
       const res = await agendamentoService.getMeuHorarioFirmado();
       if (res) {

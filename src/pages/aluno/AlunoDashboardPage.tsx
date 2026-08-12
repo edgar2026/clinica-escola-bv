@@ -27,7 +27,7 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
         const alunoId = aluno?.id;
         if (!alunoId) { setDashboard(null); return; }
 
-        const categoriaCarga = Number(aluno?.categoria_carga) || 6;
+        const categoriaCarga = Number(aluno?.carga_horaria_semanal_max) || Number(aluno?.categoria_carga) || 4;
 
         const { data: statusInscricao } = await supabase.rpc('verificar_inscricao_aberta', { p_aluno_id: Number(alunoId) });
         setInscricaoAberta(statusInscricao?.inscricao_aberta ?? false);

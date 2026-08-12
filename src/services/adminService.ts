@@ -8,7 +8,7 @@ export const adminService = {
 
     if (error) throw error;
 
-    const all: Usuario[] = (data || []).map((row: Record<string, unknown>) => ({
+    const all: UsuarioComAluno[] = (data || []).map((row: Record<string, unknown>) => ({
       id: String(row.id ?? ''),
       nome: String(row.nome ?? ''),
       email: String(row.email ?? ''),
@@ -26,6 +26,18 @@ export const adminService = {
       endereco: row.endereco ? String(row.endereco) : undefined,
       data_nascimento: row.data_nascimento ? String(row.data_nascimento) : undefined,
       tem_perfil: Boolean(row.tem_perfil),
+      aluno_id: row.aluno_id ? Number(row.aluno_id) : undefined,
+      carga_horaria_semanal: row.carga_horaria_semanal !== undefined && row.carga_horaria_semanal !== null ? Number(row.carga_horaria_semanal) : undefined,
+      categoria_carga_horas: row.categoria_carga_horas !== undefined && row.categoria_carga_horas !== null ? Number(row.categoria_carga_horas) : undefined,
+      periodo_id: row.periodo_id ? String(row.periodo_id) : undefined,
+      periodo_nome: row.periodo_nome ? String(row.periodo_nome) : undefined,
+      turno_id: row.turno_id ? String(row.turno_id) : undefined,
+      turno_nome: row.turno_nome ? String(row.turno_nome) : undefined,
+      setor_id: row.setor_id ? String(row.setor_id) : undefined,
+      setor_nome: row.setor_nome ? String(row.setor_nome) : undefined,
+      situacao_vinculo: row.situacao_vinculo ? String(row.situacao_vinculo) : undefined,
+      aluno_curso_id: row.aluno_curso_id ? String(row.aluno_curso_id) : undefined,
+      aluno_curso_nome: row.aluno_curso_nome ? String(row.aluno_curso_nome) : undefined,
     }));
 
     const total = all.length;
@@ -749,15 +761,17 @@ export const adminService = {
   // --- Dados Acadêmicos do Aluno (admin) ---
 
   async atualizarAlunoAdmin(alunoId: number, dados: {
+    carga_horaria_semanal?: number | null;
     categoria_carga_id?: number | null;
     curso_id?: number | null;
     periodo_id?: number | null;
     turno_id?: number | null;
     setor_id?: number | null;
     situacao?: string;
-  }): Promise<void> {
+  }): Promise<{ sucesso: boolean; mensagem: string; grade_reaberta?: boolean }> {
     const { data, error } = await supabase.rpc('atualizar_aluno_admin', {
       p_aluno_id: alunoId,
+      p_carga_horaria_semanal: dados.carga_horaria_semanal ?? null,
       p_categoria_carga_id: dados.categoria_carga_id ?? null,
       p_curso_id: dados.curso_id ?? null,
       p_periodo_id: dados.periodo_id ?? null,
@@ -769,10 +783,61 @@ export const adminService = {
     if (data && !data.sucesso) {
       throw new Error(data.mensagem || 'Erro ao atualizar dados do aluno.');
     }
+    return data || { sucesso: true, mensagem: 'Atualizado com sucesso.' };
   },
 
   async getGradeAlunoAdmin(alunoId: number): Promise<Record<string, unknown> | null> {
     const { data, error } = await supabase.rpc('obter_grade_aluno', { p_aluno_id: alunoId });
+    if (error) throw error;
+    return data;
+  },
+
+  // --- Carga Horária Semanal Padrão ---
+
+  async getCargaHorariaPadrao(): Promise<number> {
+    const { data, error } = await supabase
+      .from('configuracoes')
+      .select('valor')
+      .eq('chave', 'carga_horaria_semanal_padrao')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Erro ao buscar carga padrão:', error);
+      return 4;
+    }
+    return data?.valor ? Number(data.valor) : 4;
+  },
+
+  async salvarCargaHorariaPadrao(valor: number): Promise<void> {
+    const { error } = await supabase.rpc('salvar_configuracao_com_auditoria', {
+      p_chave: 'carga_horaria_semanal_padrao',
+      p_valor: String(valor),
+      p_grupo: 'geral',
+    });
+    if (error) throw error;
+  },
+
+  async getPreviewAplicarCargaPadrao(apenasSemCarga = true): Promise<{
+    valor_padrao: number;
+    total_afetados: number;
+    apenas_sem_carga: boolean;
+  }> {
+    const { data, error } = await supabase.rpc('obter_preview_aplicar_carga_padrao', {
+      p_apenas_sem_carga: apenasSemCarga,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async aplicarCargaPadraoEmLote(apenasSemCarga = true): Promise<{
+    sucesso: boolean;
+    total_afetados: number;
+    novo_valor: number;
+    mensagem: string;
+  }> {
+    const { data, error } = await supabase.rpc('aplicar_carga_horaria_padrao_em_lote', {
+      p_apenas_sem_carga: apenasSemCarga,
+    });
     if (error) throw error;
     return data;
   },

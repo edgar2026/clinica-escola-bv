@@ -112,6 +112,13 @@ export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
         return;
       }
 
+      const { data: configPadrao } = await supabase
+        .from('configuracoes')
+        .select('valor')
+        .eq('chave', 'carga_horaria_semanal_padrao')
+        .maybeSingle();
+      const cargaPadrao = configPadrao?.valor ? Number(configPadrao.valor) : 4;
+
       const { error: alunoError } = await supabase
         .from('alunos')
         .insert({
@@ -119,6 +126,7 @@ export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
           curso_id: Number(form.curso_id),
           periodo_id: Number(form.periodo_id),
           turno_id: Number(form.turno_id),
+          carga_horaria_semanal_max: cargaPadrao,
           situacao: 'ativo',
         } as never);
 

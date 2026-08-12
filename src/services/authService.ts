@@ -61,6 +61,13 @@ export const authService = {
           (novoPerfil as Record<string, unknown>).primeiroAcesso = (novoPerfil as Record<string, unknown>).primeiro_acesso;
         }
 
+        const { data: configPadrao } = await supabase
+          .from('configuracoes')
+          .select('valor')
+          .eq('chave', 'carga_horaria_semanal_padrao')
+          .maybeSingle();
+        const cargaPadrao = configPadrao?.valor ? Number(configPadrao.valor) : 4;
+
         const { error: alunoError } = await supabase
           .from('alunos')
           .insert({
@@ -68,6 +75,7 @@ export const authService = {
             curso_id: cursoId,
             periodo_id: meta.periodo_id ? Number(meta.periodo_id) : null,
             turno_id: meta.turno_id ? Number(meta.turno_id) : null,
+            carga_horaria_semanal_max: cargaPadrao,
             situacao: 'ativo',
           } as never);
         if (alunoError) {

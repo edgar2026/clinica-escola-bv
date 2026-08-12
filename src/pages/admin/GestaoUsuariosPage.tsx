@@ -105,12 +105,19 @@ export const GestaoUsuariosPage = () => {
 
   const abrirPerfil = (u: UsuarioComAluno) => { setUsuarioSelecionado(u); setModalPerfilOpen(true); };
 
+  const [modalLoteOpen, setModalLoteOpen] = useState(false);
+  const [previewLote, setPreviewLote] = useState<{ valor_padrao: number; total_afetados: number; apenas_sem_carga: boolean } | null>(null);
+  const [apenasSemCarga, setApenasSemCarga] = useState(true);
+  const [confirmacaoTexto, setConfirmacaoTexto] = useState('');
+  const [aplicandoLote, setAplicandoLote] = useState(false);
+
   const abrirEditar = (u: UsuarioComAluno) => {
     setFormEditar({
       id: u.id, nome: u.nome || '', email: u.email || '', matricula: u.matricula || '', cpf: u.cpf || '',
       perfil: u.perfil || 'aluno', telefone: u.telefone || '', email_pessoal: u.email_pessoal || '',
       endereco: u.endereco || '', data_nascimento: u.data_nascimento ? u.data_nascimento.split('T')[0] : '',
       curso_id: u.aluno_curso_id || u.curso_id || '',
+      carga_horaria_semanal: u.carga_horaria_semanal || u.categoria_carga_horas || 4,
       categoria_carga_id: u.categoria_carga_id || undefined,
       periodo_id: u.periodo_id || '',
       turno_id: u.turno_id || '',
@@ -126,24 +133,69 @@ export const GestaoUsuariosPage = () => {
     try {
       await adminService.editarUsuario(formEditar.id!, formEditar);
 
+      let msg = 'Usuario atualizado com sucesso!';
       if (formEditar.aluno_id && formEditar.perfil === 'aluno') {
-        await adminService.atualizarAlunoAdmin(Number(formEditar.aluno_id), {
-          categoria_carga_id: formEditar.categoria_carga_id ? Number(formEditar.categoria_carga_id) : null,
-          curso_id: formEditar.aluno_curso_id ? Number(formEditar.aluno_curso_id) : null,
+        const resAluno = await adminService.atualizarAlunoAdmin(Number(formEditar.aluno_id), {
+          carga_horaria_semanal: formEditar.carga_horaria_semanal ? Number(formEditar.carga_horaria_semanal) : 4,
+          curso_id: formEditar.aluno_curso_id ? Number(formEditar.aluno_curso_id) : (formEditar.curso_id ? Number(formEditar.curso_id) : null),
           periodo_id: formEditar.periodo_id ? Number(formEditar.periodo_id) : null,
           turno_id: formEditar.turno_id ? Number(formEditar.turno_id) : null,
           setor_id: formEditar.setor_id ? Number(formEditar.setor_id) : null,
           situacao: formEditar.situacao_vinculo || 'ativo',
         });
+        if (resAluno && resAluno.grade_reaberta) {
+          msg = 'Dados atualizados! A carga horária foi alterada e a grade do aluno foi reaberta com a indicação "Grade precisa de ajuste".';
+        }
       }
 
-      showToast('Usuario atualizado com sucesso!', 'sucesso');
+      showToast(msg, 'sucesso');
       setModalEditarOpen(false);
       await carregarUsuarios();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erro ao atualizar.', 'erro');
     } finally {
       setSalvando(false);
+    }
+  };
+
+  const abrirModalLote = async () => {
+    setApenasSemCarga(true);
+    setConfirmacaoTexto('');
+    try {
+      const prev = await adminService.getPreviewAplicarCargaPadrao(true);
+      setPreviewLote(prev);
+      setModalLoteOpen(true);
+    } catch (err) {
+      showToast('Erro ao carregar prévia do lote: ' + (err instanceof Error ? err.message : ''), 'erro');
+    }
+  };
+
+  const handleToggleOpcaoSemCarga = async (semCarga: boolean) => {
+    setApenasSemCarga(semCarga);
+    setConfirmacaoTexto('');
+    try {
+      const prev = await adminService.getPreviewAplicarCargaPadrao(semCarga);
+      setPreviewLote(prev);
+    } catch {
+      // Silencioso
+    }
+  };
+
+  const handleAplicarLote = async () => {
+    if (!apenasSemCarga && confirmacaoTexto.trim().toUpperCase() !== 'CONFIRMAR') {
+      showToast('Digite "CONFIRMAR" para autorizar a aplicação a todos os alunos.', 'erro');
+      return;
+    }
+    setAplicandoLote(true);
+    try {
+      const res = await adminService.aplicarCargaPadraoEmLote(apenasSemCarga);
+      showToast(res.mensagem || 'Carga horária padrão aplicada em lote com sucesso!', 'sucesso');
+      setModalLoteOpen(false);
+      await carregarUsuarios();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erro ao aplicar lote.', 'erro');
+    } finally {
+      setAplicandoLote(false);
     }
   };
 
@@ -270,6 +322,14 @@ export const GestaoUsuariosPage = () => {
           <option value="admin">Administradores</option>
         </select>
         <button
+          onClick={abrirModalLote}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid var(--border-color)', background: '#F0F9FF', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', color: 'var(--primary)' }}
+          title="Aplicar carga horária semanal padrão aos alunos"
+        >
+          <Clock size={15} />
+          Aplicar padrão aos alunos
+        </button>
+        <button
           onClick={abrirSolicitacoes}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid var(--border-color)', background: '#FFF', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-dark)', position: 'relative' }}
         >
@@ -306,6 +366,7 @@ export const GestaoUsuariosPage = () => {
                 const isSelf = isCurrentUser(u);
                 const semPerfil = u.tem_perfil === false;
                 const bloqueando = processandoId === u.id;
+                const carga = u.carga_horaria_semanal || u.categoria_carga_horas;
                 return (
                 <tr key={u.id} style={{ borderTop: '1px solid var(--border-color)', opacity: semPerfil ? 0.7 : 1 }}>
                   <td style={{ padding: '0.65rem 1rem' }}>
@@ -317,8 +378,8 @@ export const GestaoUsuariosPage = () => {
                   <td style={{ padding: '0.65rem 1rem' }}>{PERFIL_LABELS[u.perfil] || u.perfil}</td>
                   <td style={{ padding: '0.65rem 1rem' }}>{u.aluno_curso_nome || u.curso_nome || '-'}</td>
                   <td style={{ padding: '0.65rem 1rem' }}>
-                    {u.categoria_carga_horas ? (
-                      <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{u.categoria_carga_horas}h/sem</span>
+                    {carga ? (
+                      <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{carga}h/sem</span>
                     ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                   </td>
                   <td style={{ padding: '0.65rem 1rem' }}>
@@ -457,13 +518,18 @@ export const GestaoUsuariosPage = () => {
                 <>
                   <strong style={{ fontSize: '0.82rem', color: 'var(--primary)', marginTop: '0.3rem' }}>Dados Academicos</strong>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
-                    <div><label style={labelStyle}>Categoria de Carga Horaria</label>
-                      <select value={formEditar.categoria_carga_id || ''} onChange={e => setFormEditar({ ...formEditar, categoria_carga_id: e.target.value ? Number(e.target.value) : undefined })} style={{ ...inputStyle, background: '#FFF' }}>
-                        <option value="">Nao definida</option>
-                        {categoriasCarga.filter(c => c.ativo).map(c => (
-                          <option key={c.id} value={c.id}>{c.nome} ({c.horas_semanais}h)</option>
-                        ))}
-                      </select>
+                    <div>
+                      <label style={labelStyle}>Carga Horária Semanal (Horas)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="60"
+                        step="1"
+                        placeholder="ex: 4, 7 ou 12"
+                        value={formEditar.carga_horaria_semanal ?? ''}
+                        onChange={e => setFormEditar({ ...formEditar, carga_horaria_semanal: e.target.value ? Number(e.target.value) : undefined })}
+                        style={inputStyle}
+                      />
                     </div>
                     <div><label style={labelStyle}>Curso</label>
                       <select value={formEditar.aluno_curso_id || formEditar.curso_id || ''} onChange={e => setFormEditar({ ...formEditar, aluno_curso_id: e.target.value, curso_id: e.target.value })} style={{ ...inputStyle, background: '#FFF' }}>
@@ -688,6 +754,101 @@ export const GestaoUsuariosPage = () => {
               <button onClick={() => { setModalResetSenhaOpen(false); setUsuarioResetSenha(null); }} className="btn-secondary">Cancelar</button>
               <button onClick={() => handleRedefinirSenha()} disabled={resetando} style={{ padding: '0.55rem 1.25rem', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#FFF', fontWeight: 700, fontSize: '0.88rem', cursor: resetando ? 'wait' : 'pointer' }}>
                 {resetando ? 'Redefinindo...' : 'Confirmar Redefinicao'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Aplicar Carga Horária Padrão em Lote */}
+      {modalLoteOpen && previewLote && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: 540 }}>
+            <div className="modal-header">
+              <h3 style={{ color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock size={18} /> Aplicar Carga Horária Padrão em Lote
+              </h3>
+              <button onClick={() => setModalLoteOpen(false)} className="btn-close">&times;</button>
+            </div>
+
+            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.85rem', color: '#0369A1' }}>
+                <strong>Resumo da Operação:</strong>
+                <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.2rem' }}>
+                  <li>Carga Padrão Atual do Sistema: <strong>{previewLote.valor_padrao}h semanais</strong></li>
+                  <li>Alunos a serem afetados: <strong>{previewLote.total_afetados} aluno(s)</strong></li>
+                </ul>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-dark)', display: 'block', marginBottom: '0.5rem' }}>
+                Modo de Aplicação:
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer', background: apenasSemCarga ? '#EFF6FF' : '#FFF', padding: '0.6rem 0.8rem', borderRadius: 8, border: apenasSemCarga ? '2px solid var(--primary)' : '1px solid var(--border-color)' }}>
+                  <input
+                    type="radio"
+                    name="modo_lote"
+                    checked={apenasSemCarga}
+                    onChange={() => handleToggleOpcaoSemCarga(true)}
+                  />
+                  <span><strong>Apenas aos alunos sem carga configurada</strong> (Recomendado — Preserva cargas individuais existentes)</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer', background: !apenasSemCarga ? '#FEF2F2' : '#FFF', padding: '0.6rem 0.8rem', borderRadius: 8, border: !apenasSemCarga ? '2px solid #EF4444' : '1px solid var(--border-color)' }}>
+                  <input
+                    type="radio"
+                    name="modo_lote"
+                    checked={!apenasSemCarga}
+                    onChange={() => handleToggleOpcaoSemCarga(false)}
+                  />
+                  <span style={{ color: !apenasSemCarga ? '#991B1B' : 'inherit' }}>
+                    <strong>Aplicar a TODOS os alunos</strong> (Sobrescreve a carga de todos os alunos cadastrados)
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {!apenasSemCarga && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#991B1B', fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>
+                  <AlertCircle size={16} color="#DC2626" /> Confirmação Reforçada Exigida
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#7F1D1D', margin: '0 0 0.5rem' }}>
+                  Esta ação alterará a carga horária de TODOS os alunos para {previewLote.valor_padrao}h semanais. Alunos com horário firmado terão a grade reaberta com a marcação "Grade precisa de ajuste".
+                </p>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#991B1B', display: 'block', marginBottom: 4 }}>
+                  Digite <strong>CONFIRMAR</strong> abaixo para prosseguir:
+                </label>
+                <input
+                  type="text"
+                  placeholder="CONFIRMAR"
+                  value={confirmacaoTexto}
+                  onChange={e => setConfirmacaoTexto(e.target.value)}
+                  style={{ ...inputStyle, background: '#FFF', borderColor: '#FCA5A5', fontWeight: 700 }}
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setModalLoteOpen(false)} className="btn-secondary">Cancelar</button>
+              <button
+                onClick={handleAplicarLote}
+                disabled={aplicandoLote || (!apenasSemCarga && confirmacaoTexto.trim().toUpperCase() !== 'CONFIRMAR')}
+                style={{
+                  padding: '0.55rem 1.25rem',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: !apenasSemCarga ? '#DC2626' : 'var(--primary)',
+                  color: '#FFF',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: aplicandoLote ? 'wait' : 'pointer',
+                  opacity: (!apenasSemCarga && confirmacaoTexto.trim().toUpperCase() !== 'CONFIRMAR') || aplicandoLote ? 0.5 : 1,
+                }}
+              >
+                {aplicandoLote ? 'Aplicando...' : 'Confirmar e Aplicar em Lote'}
               </button>
             </div>
           </div>

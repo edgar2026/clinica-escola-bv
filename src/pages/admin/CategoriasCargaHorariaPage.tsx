@@ -27,6 +27,8 @@ const LABEL_STYLE: React.CSSProperties = {
 export const CategoriasCargaHorariaPage = () => {
   const { showToast } = useAuth();
   const [categorias, setCategorias] = useState<CategoriaCargaHoraria[]>([]);
+  const [cargaPadrao, setCargaPadrao] = useState<number>(4);
+  const [salvandoPadrao, setSalvandoPadrao] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalEditarOpen, setModalEditarOpen] = useState(false);
   const [modalExcluirOpen, setModalExcluirOpen] = useState(false);
@@ -38,14 +40,34 @@ export const CategoriasCargaHorariaPage = () => {
   const carregarCategorias = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await adminService.getCategoriasCargaHoraria();
+      const [data, padrao] = await Promise.all([
+        adminService.getCategoriasCargaHoraria(),
+        adminService.getCargaHorariaPadrao(),
+      ]);
       setCategorias(data);
+      setCargaPadrao(padrao || 4);
     } catch (err) {
       showToast('Erro ao carregar categorias: ' + (err instanceof Error ? err.message : ''), 'erro');
     } finally {
       setLoading(false);
     }
   }, [showToast]);
+
+  const handleSalvarPadrao = async () => {
+    if (!cargaPadrao || cargaPadrao <= 0 || !Number.isInteger(cargaPadrao)) {
+      showToast('A carga horária padrão deve ser um número inteiro positivo (ex: 4, 5, 6).', 'erro');
+      return;
+    }
+    setSalvandoPadrao(true);
+    try {
+      await adminService.salvarCargaHorariaPadrao(cargaPadrao);
+      showToast(`Carga horária padrão atualizada para ${cargaPadrao}h semanais! Novos alunos receberão esta carga automaticamente.`, 'sucesso');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erro ao salvar carga padrão.', 'erro');
+    } finally {
+      setSalvandoPadrao(false);
+    }
+  };
 
   useEffect(() => { carregarCategorias(); }, [carregarCategorias]);
 
@@ -131,10 +153,55 @@ export const CategoriasCargaHorariaPage = () => {
   return (
     <section>
       <div className="page-header">
-        <h1 className="page-title">Categorias de Carga Horaria</h1>
-        <p className="page-subtitle">Gerencie as categorias de carga horaria semanal disponiveis para os alunos.</p>
+        <h1 className="page-title">Configuração de Carga Horária Semanal</h1>
+        <p className="page-subtitle">Defina o padrão do sistema (4h) e gerencie as cargas semanais dos alunos.</p>
       </div>
 
+      {/* Card da Carga Horária Semanal Padrão */}
+      <div style={{
+        background: 'var(--bg-card)',
+        borderRadius: 12,
+        border: '1px solid var(--border-color)',
+        padding: '1.25rem 1.5rem',
+        marginBottom: '1.5rem',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+      }}>
+        <h3 style={{ color: 'var(--primary)', margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 700 }}>
+          Carga Horária Semanal Padrão do Sistema
+        </h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
+          Todo novo aluno cadastrado receberá automaticamente esta carga semanal, sem necessidade de selecionar opções no cadastro público.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dark)', display: 'block', marginBottom: 4 }}>
+              Horas Padrão (Semanais)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                step="1"
+                value={cargaPadrao}
+                onChange={e => setCargaPadrao(Number(e.target.value))}
+                style={{ ...INPUT_STYLE, width: 100, textAlign: 'center', fontWeight: 700, fontSize: '1.05rem' }}
+              />
+              <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-dark)' }}>horas / semana</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSalvarPadrao}
+            disabled={salvandoPadrao}
+            className="btn-primary"
+            style={{ marginTop: 20, padding: '0.55rem 1.25rem', fontSize: '0.85rem' }}
+          >
+            {salvandoPadrao ? 'Salvando...' : 'Salvar Carga Padrão'}
+          </button>
+        </div>
+      </div>
       <div style={{ marginBottom: '1rem' }}>
         <button onClick={abrirCriar} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Plus size={16} /> Nova Categoria

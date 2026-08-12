@@ -59,6 +59,8 @@ interface GradeAlunoResponse {
   vigencia_inicio: string;
   vigencia_fim: string;
   categoria_carga: number;
+  campos_pendentes?: string[];
+  pode_exibir_grade?: boolean;
 }
 
 const calcularDuracaoHoras = (inicio: string, fim: string): number => {
@@ -76,7 +78,9 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
   const [slots, setSlots] = useState<SlotGrade[]>([]);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [gradeConfirmada, setGradeConfirmada] = useState<GradeAlunoResponse | null>(null);
-  const [categoriaCarga, setCategoriaCarga] = useState(6);
+  const [categoriaCarga, setCategoriaCarga] = useState(4);
+  const [camposPendentes, setCamposPendentes] = useState<string[]>([]);
+  const [gradePrecisaAjuste, setGradePrecisaAjuste] = useState(false);
   const [configId, setConfigId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
@@ -121,6 +125,12 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
 
       const grade: GradeAlunoResponse = gradeData;
 
+      if (grade?.campos_pendentes && grade.campos_pendentes.length > 0) {
+        setCamposPendentes(grade.campos_pendentes);
+      } else {
+        setCamposPendentes([]);
+      }
+
       if (grade?.tem_grade) {
         if (grade.categoria_carga) {
           setCategoriaCarga(grade.categoria_carga);
@@ -130,6 +140,11 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         if (grade.confirmado) {
           setGradeConfirmada(grade);
           return;
+        }
+
+        // Se tem seleções prévias mas não está confirmado, significa que a grade foi reaberta para ajuste
+        if (grade.selecoes && grade.selecoes.length > 0 && !grade.confirmado) {
+          setGradePrecisaAjuste(true);
         }
 
         const selecionadosAtuais = new Set<string>(
@@ -146,16 +161,18 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
 
       const effectiveConfigId = grade?.config_id || status.config_id;
 
-      const { data: slotsData, error: errSlots } = await supabase
-        .from('vagas_horarios')
-        .select('*, setores(nome)')
-        .eq('status', 'ativo')
-        .eq('config_id', effectiveConfigId)
-        .order('dia_semana', { ascending: true })
-        .order('hora_inicio', { ascending: true });
+      if (effectiveConfigId) {
+        const { data: slotsData, error: errSlots } = await supabase
+          .from('vagas_horarios')
+          .select('*, setores(nome)')
+          .eq('status', 'ativo')
+          .eq('config_id', effectiveConfigId)
+          .order('dia_semana', { ascending: true })
+          .order('hora_inicio', { ascending: true });
 
-      if (errSlots) throw errSlots;
-      setSlots((slotsData as SlotGrade[]) || []);
+        if (errSlots) throw errSlots;
+        setSlots((slotsData as SlotGrade[]) || []);
+      }
     } catch (err) {
       showToast('Erro ao carregar dados: ' + (err instanceof Error ? err.message : ''), 'erro');
     } finally {
@@ -260,6 +277,42 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       <section>
         <div style={{ padding: '4rem', textAlign: 'center', color: '#94A3B8' }}>
           Carregando grade semanal...
+        </div>
+      </section>
+    );
+  }
+
+  if (camposPendentes.length > 0 && !gradeConfirmada) {
+    return (
+      <section>
+        <div className="page-header">
+          <h1 className="page-title">Grade Semanal de Prática</h1>
+          <p className="page-subtitle">Configurações pendentes para exibição da grade semanal.</p>
+        </div>
+        <div style={{
+          background: '#FEF3C7',
+          border: '1px solid #F59E0B',
+          borderRadius: 12,
+          padding: '1.5rem',
+          marginBottom: '1rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <AlertTriangle size={24} color="#D97706" />
+            <h3 style={{ margin: 0, color: '#92400E', fontWeight: 700, fontSize: '1.05rem' }}>
+              Configuração Pendente para Exibição da Grade
+            </h3>
+          </div>
+          <p style={{ fontSize: '0.9rem', color: '#92400E', margin: '0 0 0.75rem' }}>
+            A exibição da sua grade semanal requer a conclusão dos seguintes itens do seu perfil acadêmico:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#B45309', fontSize: '0.9rem', fontWeight: 600 }}>
+            {camposPendentes.map((item, idx) => (
+              <li key={idx} style={{ marginBottom: 4 }}>{item}</li>
+            ))}
+          </ul>
+          <p style={{ fontSize: '0.85rem', color: '#78350F', margin: '1rem 0 0' }}>
+            Por favor, solicite à administração da Clínica-Escola a atualização desses dados para liberar a escolha dos seus horários.
+          </p>
         </div>
       </section>
     );
@@ -450,6 +503,30 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         </p>
       </div>
 
+      {gradePrecisaAjuste && (
+        <div style={{
+          background: '#FEF3C7',
+          border: '2px solid #F59E0B',
+          borderRadius: 12,
+          padding: '1rem 1.25rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          boxShadow: '0 2px 8px rgba(245,158,11,0.2)',
+        }}>
+          <AlertTriangle size={24} color="#D97706" style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.98rem' }}>
+              Grade Precisa de Ajuste
+            </div>
+            <div style={{ fontSize: '0.88rem', color: '#B45309', marginTop: 2 }}>
+              Sua carga horária semanal foi alterada pela administração para <strong>{categoriaCarga}h semanais</strong>. Por favor, ajuste suas seleções de horário até totalizar exatamente {categoriaCarga}h e confirme seu horário firmado novamente.
+            </div>
+          </div>
+        </div>
+      )};
+
       {categoriaNaoDefinida && (
         <div style={{
           background: '#FEF3C7',
@@ -463,10 +540,10 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         }}>
           <AlertTriangle size={24} color="#F59E0B" />
           <div>
-            <p style={{ margin: 0, fontWeight: 700, color: '#92400E' }}>Categoria nao configurada</p>
+            <p style={{ margin: 0, fontWeight: 700, color: '#92400E' }}>Carga horária não configurada</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.88rem', color: '#92400E' }}>
-              Sua carga horaria semanal ainda nao foi configurada pela administracao.
-              Entre em contato com a administracao para que sua categoria seja definida.
+              Sua carga horária semanal ainda não foi configurada pela administração.
+              Entre em contato com a administração para que seja definida.
             </p>
           </div>
         </div>
