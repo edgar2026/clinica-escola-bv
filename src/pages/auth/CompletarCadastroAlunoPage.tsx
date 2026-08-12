@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabaseClient';
-import { GraduationCap, ChevronRight } from 'lucide-react';
+import { GraduationCap, ChevronRight, Clock } from 'lucide-react';
 import type { Periodo, Turno } from '../../types';
 
 export const CompletarCadastroAlunoPage = () => {
