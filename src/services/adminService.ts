@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { Usuario, OpcoesCadastro, Curso, Periodo, Turno, Clinica, Setor, Especialidade, Professor, Supervisor, Vinculo, Unidade, HorarioFuncionamento, VagaHorario, Feriado, Regra, Configuracao, AuditoriaLog } from '../types';
+import type { Usuario, OpcoesCadastro, Curso, Periodo, Turno, Clinica, Setor, Especialidade, Professor, Supervisor, Vinculo, Unidade, HorarioFuncionamento, VagaHorario, Feriado, Regra, Configuracao, AuditoriaLog, CategoriaCargaHoraria } from '../types';
 
 
 export const adminService = {
@@ -690,5 +690,90 @@ export const adminService = {
       const result = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
       throw new Error(result.error || 'Falha ao redefinir senha.');
     }
+  },
+
+  // --- Categorias de Carga Horária ---
+
+  async getCategoriasCargaHoraria(): Promise<CategoriaCargaHoraria[]> {
+    const { data, error } = await supabase
+      .from('categorias_carga_horaria')
+      .select('*')
+      .order('horas_semanais', { ascending: true });
+    if (error) throw error;
+    return (data as CategoriaCargaHoraria[]) || [];
+  },
+
+  async criarCategoriaCargaHoraria(dados: { nome: string; horas_semanais: number; descricao?: string }): Promise<CategoriaCargaHoraria> {
+    const { data, error } = await supabase
+      .from('categorias_carga_horaria')
+      .insert(dados as never)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as CategoriaCargaHoraria;
+  },
+
+  async atualizarCategoriaCargaHoraria(id: number, dados: Partial<CategoriaCargaHoraria>): Promise<CategoriaCargaHoraria> {
+    const { data, error } = await supabase
+      .from('categorias_carga_horaria')
+      .update({ ...dados, atualizado_em: new Date().toISOString() } as never)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as CategoriaCargaHoraria;
+  },
+
+  async excluirCategoriaCargaHoraria(id: number): Promise<void> {
+    const { count } = await supabase
+      .from('alunos')
+      .select('*', { count: 'exact', head: true })
+      .eq('categoria_carga_id', id);
+
+    if (count && count > 0) {
+      throw new Error(`Não é possível excluir esta categoria pois está vinculada a ${count} aluno(s). Use inativar ao invés de excluir.`);
+    }
+
+    const { error } = await supabase.from('categorias_carga_horaria').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async inativarCategoriaCargaHoraria(id: number, ativo: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('categorias_carga_horaria')
+      .update({ ativo, atualizado_em: new Date().toISOString() } as never)
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- Dados Acadêmicos do Aluno (admin) ---
+
+  async atualizarAlunoAdmin(alunoId: number, dados: {
+    categoria_carga_id?: number | null;
+    curso_id?: number | null;
+    periodo_id?: number | null;
+    turno_id?: number | null;
+    setor_id?: number | null;
+    situacao?: string;
+  }): Promise<void> {
+    const { data, error } = await supabase.rpc('atualizar_aluno_admin', {
+      p_aluno_id: alunoId,
+      p_categoria_carga_id: dados.categoria_carga_id ?? null,
+      p_curso_id: dados.curso_id ?? null,
+      p_periodo_id: dados.periodo_id ?? null,
+      p_turno_id: dados.turno_id ?? null,
+      p_setor_id: dados.setor_id ?? null,
+      p_situacao: dados.situacao ?? null,
+    });
+    if (error) throw error;
+    if (data && !data.sucesso) {
+      throw new Error(data.mensagem || 'Erro ao atualizar dados do aluno.');
+    }
+  },
+
+  async getGradeAlunoAdmin(alunoId: number): Promise<Record<string, unknown> | null> {
+    const { data, error } = await supabase.rpc('obter_grade_aluno', { p_aluno_id: alunoId });
+    if (error) throw error;
+    return data;
   },
 };

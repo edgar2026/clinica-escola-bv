@@ -7,7 +7,7 @@ import type { CadastroAlunoPageProps } from '../../types';
 
 export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
   const { showToast } = useAuth();
-  const [form, setForm] = useState({ nome: '', email: '', matricula: '', curso_id: '', periodo_id: '', turno_id: '', categoria_carga: '6', senha: '', confirmaSenha: '' });
+  const [form, setForm] = useState({ nome: '', email: '', matricula: '', curso_id: '', periodo_id: '', turno_id: '', senha: '', confirmaSenha: '' });
   const [salvando, setSalvando] = useState(false);
   const [cursos, setCursos] = useState<Array<{ id: string; nome: string }>>([]);
   const [periodos, setPeriodos] = useState<Array<{ id: string; nome: string }>>([]);
@@ -84,7 +84,7 @@ export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
       const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.senha,
-        options: { data: { nome: form.nome, matricula: form.matricula, curso_id: form.curso_id, periodo_id: form.periodo_id, turno_id: form.turno_id, categoria_carga: form.categoria_carga } }
+        options: { data: { nome: form.nome, matricula: form.matricula, curso_id: form.curso_id, periodo_id: form.periodo_id, turno_id: form.turno_id } }
       });
       if (error) throw error;
       if (!data.user) throw new Error('Falha ao criar conta de autenticacao.');
@@ -119,7 +119,6 @@ export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
           curso_id: Number(form.curso_id),
           periodo_id: Number(form.periodo_id),
           turno_id: Number(form.turno_id),
-          categoria_carga: Number(form.categoria_carga),
           situacao: 'ativo',
         } as never);
 
@@ -220,61 +219,6 @@ export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
                 <option value="">Selecione...</option>
                 {turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
               </select>
-            </div>
-          </div>
-          <div>
-            <label style={labelStyle}>Categoria de Carga Horaria *</label>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <label style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                borderRadius: 8,
-                border: form.categoria_carga === '3' ? '2px solid var(--primary)' : '2px solid var(--border-color)',
-                background: form.categoria_carga === '3' ? 'var(--primary-light, #EBF5FF)' : '#FFF',
-                cursor: 'pointer',
-                fontWeight: form.categoria_carga === '3' ? 700 : 500,
-                color: form.categoria_carga === '3' ? 'var(--primary)' : 'var(--text-muted)',
-                transition: 'all 0.15s ease',
-              }}>
-                <input
-                  type="radio"
-                  name="categoria_carga"
-                  value="3"
-                  checked={form.categoria_carga === '3'}
-                  onChange={e => setForm({ ...form, categoria_carga: e.target.value })}
-                  style={{ display: 'none' }}
-                />
-                3h semanais
-              </label>
-              <label style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                borderRadius: 8,
-                border: form.categoria_carga === '6' ? '2px solid var(--primary)' : '2px solid var(--border-color)',
-                background: form.categoria_carga === '6' ? 'var(--primary-light, #EBF5FF)' : '#FFF',
-                cursor: 'pointer',
-                fontWeight: form.categoria_carga === '6' ? 700 : 500,
-                color: form.categoria_carga === '6' ? 'var(--primary)' : 'var(--text-muted)',
-                transition: 'all 0.15s ease',
-              }}>
-                <input
-                  type="radio"
-                  name="categoria_carga"
-                  value="6"
-                  checked={form.categoria_carga === '6'}
-                  onChange={e => setForm({ ...form, categoria_carga: e.target.value })}
-                  style={{ display: 'none' }}
-                />
-                6h semanais
-              </label>
             </div>
           </div>
           <div>

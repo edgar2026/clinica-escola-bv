@@ -85,7 +85,8 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     .filter(s => selecionados.has(s.id))
     .reduce((acc, s) => acc + calcularDuracaoHoras(s.hora_inicio, s.hora_fim), 0);
 
-  const podeConfirmar = totalHorasSelecionadas > 0 && totalHorasSelecionadas === categoriaCarga;
+  const podeConfirmar = totalHorasSelecionadas > 0 && totalHorasSelecionadas === categoriaCarga && categoriaCarga > 0;
+  const categoriaNaoDefinida = !gradeConfirmada && (!categoriaCarga || categoriaCarga <= 0);
 
   const carregarDados = useCallback(async () => {
     setLoading(true);
@@ -107,7 +108,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         inscricao_fim: statusInscricao?.inscricao_fim,
         vigencia_inicio: statusInscricao?.vigencia_inicio,
         vigencia_fim: statusInscricao?.vigencia_fim,
-        categoria_carga: 6,
+        categoria_carga: undefined,
       };
 
       setInscricao(status);
@@ -121,7 +122,9 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       const grade: GradeAlunoResponse = gradeData;
 
       if (grade?.tem_grade) {
-        setCategoriaCarga(grade.categoria_carga ?? 6);
+        if (grade.categoria_carga) {
+          setCategoriaCarga(grade.categoria_carga);
+        }
         setConfigId(grade.config_id);
 
         if (grade.confirmado) {
@@ -443,9 +446,31 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       <div className="page-header">
         <h1 className="page-title">Grade Semanal de Prática</h1>
         <p className="page-subtitle">
-          Selecione os horários de prática conforme sua categoria ({categoriaCarga}h semanais).
+          Selecione os horários de prática conforme sua categoria.
         </p>
       </div>
+
+      {categoriaNaoDefinida && (
+        <div style={{
+          background: '#FEF3C7',
+          border: '1px solid #F59E0B',
+          borderRadius: 12,
+          padding: '1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          marginBottom: '1.5rem',
+        }}>
+          <AlertTriangle size={24} color="#F59E0B" />
+          <div>
+            <p style={{ margin: 0, fontWeight: 700, color: '#92400E' }}>Categoria nao configurada</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.88rem', color: '#92400E' }}>
+              Sua carga horaria semanal ainda nao foi configurada pela administracao.
+              Entre em contato com a administracao para que sua categoria seja definida.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div style={{
         background: '#FFF',
@@ -483,8 +508,8 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
             Categoria
           </span>
-          <div style={{ fontWeight: 700, color: '#1E293B' }}>
-            {categoriaCarga}h semanais
+          <div style={{ fontWeight: 700, color: categoriaCarga > 0 ? '#1E293B' : '#F59E0B' }}>
+            {categoriaCarga > 0 ? `${categoriaCarga}h semanais` : 'Nao definida'}
           </div>
         </div>
       </div>
@@ -628,16 +653,18 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
             <span style={{
               fontSize: '1.5rem',
               fontWeight: 800,
-              color: totalHorasSelecionadas === categoriaCarga
-                ? '#10B981'
-                : totalHorasSelecionadas > categoriaCarga
-                  ? '#EF4444'
-                  : 'var(--primary)',
+              color: !categoriaCarga || categoriaCarga <= 0
+                ? '#F59E0B'
+                : totalHorasSelecionadas === categoriaCarga
+                  ? '#10B981'
+                  : totalHorasSelecionadas > categoriaCarga
+                    ? '#EF4444'
+                    : 'var(--primary)',
             }}>
               {totalHorasSelecionadas}h
             </span>
             <span style={{ fontSize: '0.95rem', color: '#94A3B8', fontWeight: 600 }}>
-              / {categoriaCarga}h
+              / {categoriaCarga > 0 ? `${categoriaCarga}h` : '?'}
             </span>
           </div>
         </div>

@@ -66,7 +66,6 @@ export const authService = {
           .insert({
             usuario_id: novoPerfil.id,
             curso_id: cursoId,
-            categoria_carga: meta.categoria_carga ? Number(meta.categoria_carga) : 6,
             periodo_id: meta.periodo_id ? Number(meta.periodo_id) : null,
             turno_id: meta.turno_id ? Number(meta.turno_id) : null,
             situacao: 'ativo',

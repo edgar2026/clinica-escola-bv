@@ -5,6 +5,7 @@ import { formatarData } from '../../utils/datas';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
 import { GestaoUsuariosPage } from './GestaoUsuariosPage';
 import { GradeSemanalPage } from './GradeSemanalPage';
+import { CategoriasCargaHorariaPage } from './CategoriasCargaHorariaPage';
 import {
   Plus, Trash2, Edit2, AlertTriangle,
   Save
@@ -977,6 +978,7 @@ const SECTION_LABELS: Record<string, string> = {
   'config-periodos': 'Periodos',
   'config-turnos': 'Turnos',
   'config-supervisores': 'Supervisores',
+  'config-categorias-carga': 'Categorias de Carga Horaria',
   'config-horarios': 'Dias e Horarios',
   'config-duracao-atendimento': 'Duracao dos Atendimentos',
   'config-vagas-horarios': 'Vagas por Horario',
@@ -996,6 +998,7 @@ const SECTION_TO_CONFIG: Record<string, string> = {
   'config-periodos': 'periodos',
   'config-turnos': 'turnos',
   'config-supervisores': 'supervisores',
+  'config-categorias-carga': 'categorias_carga',
   'config-horarios': 'horarios',
   'config-duracao-atendimento': 'duracao_atendimento',
   'config-vagas-horarios': 'vagas_horarios',
@@ -1055,6 +1058,7 @@ export const ConfiguracoesPage = ({ section }: ConfiguracoesPageProps) => {
       case 'periodos': return <PanelPeriodos showToast={showToast} />;
       case 'turnos': return <PanelTurnos showToast={showToast} />;
       case 'supervisores': return <PanelSupervisores showToast={showToast} />;
+      case 'categorias_carga': return <CategoriasCargaHorariaPage />;
       case 'horarios': return <PanelHorarios showToast={showToast} />;
       case 'duracao_atendimento': return <PanelDuracaoAtendimento showToast={showToast} regras={regras} onSalvar={handleSalvarRegra} />;
       case 'vagas_horarios': return <PanelVagasHorarios showToast={showToast} />;

@@ -25,6 +25,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
       { id: 'config-periodos', label: 'Periodos' },
       { id: 'config-turnos', label: 'Turnos' },
       { id: 'config-supervisores', label: 'Supervisores' },
+      { id: 'config-categorias-carga', label: 'Categorias de Carga' },
     ],
   },
   {

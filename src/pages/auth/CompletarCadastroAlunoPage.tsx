@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabaseClient';
-import { GraduationCap, Clock, ChevronRight } from 'lucide-react';
+import { GraduationCap, ChevronRight } from 'lucide-react';
 import type { Periodo, Turno } from '../../types';
 
 export const CompletarCadastroAlunoPage = () => {
   const { usuario, setUsuario, showToast } = useAuth();
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
   const [turnos, setTurnos] = useState<Turno[]>([]);
-  const [form, setForm] = useState({ periodo_id: '', turno_id: '', categoria_carga: '6' });
+  const [form, setForm] = useState({ periodo_id: '', turno_id: '' });
   const [salvando, setSalvando] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +40,7 @@ export const CompletarCadastroAlunoPage = () => {
 
       const result = await (supabase
         .from('alunos') as any)
-        .update({ periodo_id: form.periodo_id, turno_id: form.turno_id, categoria_carga: Number(form.categoria_carga) })
+        .update({ periodo_id: form.periodo_id, turno_id: form.turno_id })
         .eq('usuario_id', usuario.id)
         .select()
         .single();
@@ -121,62 +121,6 @@ export const CompletarCadastroAlunoPage = () => {
               <option value="">Selecione o turno...</option>
               {turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
             </select>
-          </div>
-
-          <div>
-            <label style={labelStyle}>Categoria de Carga Horária *</label>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <label style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                borderRadius: 8,
-                border: form.categoria_carga === '3' ? '2px solid var(--primary)' : '2px solid var(--border-color)',
-                background: form.categoria_carga === '3' ? 'var(--primary-light, #EBF5FF)' : '#FFF',
-                cursor: 'pointer',
-                fontWeight: form.categoria_carga === '3' ? 700 : 500,
-                color: form.categoria_carga === '3' ? 'var(--primary)' : 'var(--text-muted)',
-                transition: 'all 0.15s ease',
-              }}>
-                <input
-                  type="radio"
-                  name="categoria_carga"
-                  value="3"
-                  checked={form.categoria_carga === '3'}
-                  onChange={e => setForm({ ...form, categoria_carga: e.target.value })}
-                  style={{ display: 'none' }}
-                />
-                3h semanais
-              </label>
-              <label style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                borderRadius: 8,
-                border: form.categoria_carga === '6' ? '2px solid var(--primary)' : '2px solid var(--border-color)',
-                background: form.categoria_carga === '6' ? 'var(--primary-light, #EBF5FF)' : '#FFF',
-                cursor: 'pointer',
-                fontWeight: form.categoria_carga === '6' ? 700 : 500,
-                color: form.categoria_carga === '6' ? 'var(--primary)' : 'var(--text-muted)',
-                transition: 'all 0.15s ease',
-              }}>
-                <input
-                  type="radio"
-                  name="categoria_carga"
-                  value="6"
-                  checked={form.categoria_carga === '6'}
-                  onChange={e => setForm({ ...form, categoria_carga: e.target.value })}
-                  style={{ display: 'none' }}
-                />
-                6h semanais
-              </label>
-            </div>
           </div>
 
           <button onClick={handleSalvar} disabled={salvando} className="btn-primary" style={{ width: '100%', padding: '0.75rem', fontSize: '1rem', fontWeight: 700, marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>

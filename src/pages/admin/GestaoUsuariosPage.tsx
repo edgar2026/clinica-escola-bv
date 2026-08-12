@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Eye, Edit3, Ban, CheckCircle, Search, Trash2, KeyRound, AlertCircle } from 'lucide-react';
+import { Eye, Edit3, Ban, CheckCircle, Search, Trash2, KeyRound, AlertCircle, Clock, Calendar } from 'lucide-react';
 import { adminService } from '../../services/adminService';
-import type { Usuario, OpcoesCadastro, Perfil, SolicitacaoResetSenha } from '../../types';
+import type { Usuario, OpcoesCadastro, Perfil, SolicitacaoResetSenha, CategoriaCargaHoraria, UsuarioComAluno } from '../../types';
 
 const PERFIL_LABELS: Record<string, string> = { admin: 'Administrador', gerencia: 'Gerencia', aluno: 'Aluno' };
 const STATUS_COLORS: Record<string, string> = { ativo: '#10B981', inativo: '#6B7280', suspenso: '#F59E0B' };
 const STATUS_SOLICITACAO_COLORS: Record<string, string> = { pendente: '#F59E0B', atendida: '#10B981', cancelada: '#6B7280' };
+const SITUACAO_LABELS: Record<string, string> = { ativo: 'Ativo', inativo: 'Inativo', suspenso: 'Suspenso', formado: 'Formado', desistente: 'Desistente' };
+const DIAS_SEMANA: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sab' };
 
 export const GestaoUsuariosPage = () => {
   const { showToast, usuario: usuarioLogado } = useAuth();
   const showToastRef = useRef(showToast);
   showToastRef.current = showToast;
 
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioComAluno[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
   const [filtroPerfil, setFiltroPerfil] = useState('');
@@ -21,16 +23,18 @@ export const GestaoUsuariosPage = () => {
   const [totalPaginas, setTotalPaginas] = useState(1);
 
   const [modalPerfilOpen, setModalPerfilOpen] = useState(false);
-  const [usuarioSelecionado, setUsuarioSelecionado] = useState<Usuario | null>(null);
+  const [usuarioSelecionado, setUsuarioSelecionado] = useState<UsuarioComAluno | null>(null);
 
   const [modalEditarOpen, setModalEditarOpen] = useState(false);
-  const [formEditar, setFormEditar] = useState<Partial<Usuario>>({});
+  const [formEditar, setFormEditar] = useState<Partial<UsuarioComAluno>>({});
   const [salvando, setSalvando] = useState(false);
 
   const [opcoes, setOpcoes] = useState<OpcoesCadastro>({ cursos: [], periodos: [], turnos: [] });
+  const [categoriasCarga, setCategoriasCarga] = useState<CategoriaCargaHoraria[]>([]);
+  const [setoresClinica, setSetoresClinica] = useState<Array<{ id: number; nome: string }>>([]);
 
   const [modalExcluirOpen, setModalExcluirOpen] = useState(false);
-  const [usuarioExcluir, setUsuarioExcluir] = useState<Usuario | null>(null);
+  const [usuarioExcluir, setUsuarioExcluir] = useState<UsuarioComAluno | null>(null);
   const [excluindo, setExcluindo] = useState(false);
 
   const [processandoId, setProcessandoId] = useState<string | null>(null);
@@ -41,13 +45,17 @@ export const GestaoUsuariosPage = () => {
   const [loadingSolicitacoes, setLoadingSolicitacoes] = useState(false);
 
   const [modalResetSenhaOpen, setModalResetSenhaOpen] = useState(false);
-  const [usuarioResetSenha, setUsuarioResetSenha] = useState<Usuario | null>(null);
+  const [usuarioResetSenha, setUsuarioResetSenha] = useState<UsuarioComAluno | null>(null);
   const [resetando, setResetando] = useState(false);
+
+  const [modalGradeOpen, setModalGradeOpen] = useState(false);
+  const [gradeAluno, setGradeAluno] = useState<Record<string, unknown> | null>(null);
+  const [loadingGrade, setLoadingGrade] = useState(false);
 
   const carregarUsuarios = useCallback(async () => {
     try {
       const res = await adminService.getUsuarios(pagina, 20);
-      setUsuarios(res?.usuarios || []);
+      setUsuarios((res?.usuarios || []) as UsuarioComAluno[]);
       setTotalPaginas(res?.total ? Math.ceil(res.total / 20) : 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
@@ -59,12 +67,16 @@ export const GestaoUsuariosPage = () => {
 
   const carregarOpcoes = useCallback(async () => {
     try {
-      const [cursos, periodos, turnos] = await Promise.all([
+      const [cursos, periodos, turnos, cats, setores] = await Promise.all([
         adminService.getCursos(),
         adminService.getPeriodos(),
         adminService.getTurnos(),
+        adminService.getCategoriasCargaHoraria(),
+        adminService.getSetoresClinica(),
       ]);
       setOpcoes({ cursos, periodos, turnos });
+      setCategoriasCarga(cats);
+      setSetoresClinica(setores);
     } catch (err) {
       console.error('Erro ao carregar opcoes:', err);
     }
@@ -89,16 +101,22 @@ export const GestaoUsuariosPage = () => {
     });
   }, [usuarios, busca, filtroPerfil]);
 
-  const isCurrentUser = (u: Usuario) => u.auth_user_id === usuarioLogado?.auth_user_id;
+  const isCurrentUser = (u: UsuarioComAluno) => u.auth_user_id === usuarioLogado?.auth_user_id;
 
-  const abrirPerfil = (u: Usuario) => { setUsuarioSelecionado(u); setModalPerfilOpen(true); };
+  const abrirPerfil = (u: UsuarioComAluno) => { setUsuarioSelecionado(u); setModalPerfilOpen(true); };
 
-  const abrirEditar = (u: Usuario) => {
+  const abrirEditar = (u: UsuarioComAluno) => {
     setFormEditar({
       id: u.id, nome: u.nome || '', email: u.email || '', matricula: u.matricula || '', cpf: u.cpf || '',
       perfil: u.perfil || 'aluno', telefone: u.telefone || '', email_pessoal: u.email_pessoal || '',
       endereco: u.endereco || '', data_nascimento: u.data_nascimento ? u.data_nascimento.split('T')[0] : '',
-      curso_id: u.curso_id || '',
+      curso_id: u.aluno_curso_id || u.curso_id || '',
+      categoria_carga_id: u.categoria_carga_id || undefined,
+      periodo_id: u.periodo_id || '',
+      turno_id: u.turno_id || '',
+      setor_id: u.setor_id || undefined,
+      situacao_vinculo: u.situacao_vinculo || 'ativo',
+      aluno_id: u.aluno_id || undefined,
     });
     setModalEditarOpen(true);
   };
@@ -107,6 +125,18 @@ export const GestaoUsuariosPage = () => {
     setSalvando(true);
     try {
       await adminService.editarUsuario(formEditar.id!, formEditar);
+
+      if (formEditar.aluno_id && formEditar.perfil === 'aluno') {
+        await adminService.atualizarAlunoAdmin(Number(formEditar.aluno_id), {
+          categoria_carga_id: formEditar.categoria_carga_id ? Number(formEditar.categoria_carga_id) : null,
+          curso_id: formEditar.aluno_curso_id ? Number(formEditar.aluno_curso_id) : null,
+          periodo_id: formEditar.periodo_id ? Number(formEditar.periodo_id) : null,
+          turno_id: formEditar.turno_id ? Number(formEditar.turno_id) : null,
+          setor_id: formEditar.setor_id ? Number(formEditar.setor_id) : null,
+          situacao: formEditar.situacao_vinculo || 'ativo',
+        });
+      }
+
       showToast('Usuario atualizado com sucesso!', 'sucesso');
       setModalEditarOpen(false);
       await carregarUsuarios();
@@ -117,7 +147,7 @@ export const GestaoUsuariosPage = () => {
     }
   };
 
-  const handleBloquearDesbloquear = async (u: Usuario) => {
+  const handleBloquearDesbloquear = async (u: UsuarioComAluno) => {
     if (isCurrentUser(u)) {
       showToast('Voce nao pode bloquear sua propria conta.', 'erro');
       return;
@@ -135,7 +165,7 @@ export const GestaoUsuariosPage = () => {
     }
   };
 
-  const confirmarExclusao = (u: Usuario) => {
+  const confirmarExclusao = (u: UsuarioComAluno) => {
     if (isCurrentUser(u)) {
       showToast('Voce nao pode excluir sua propria conta.', 'erro');
       return;
@@ -173,7 +203,7 @@ export const GestaoUsuariosPage = () => {
     }
   };
 
-  const abrirModalResetSenha = (u: Usuario) => {
+  const abrirModalResetSenha = (u: UsuarioComAluno) => {
     if (isCurrentUser(u)) {
       showToast('O administrador nao pode redefinir a propria senha por este metodo.', 'erro');
       return;
@@ -199,6 +229,23 @@ export const GestaoUsuariosPage = () => {
       showToast(err instanceof Error ? err.message : 'Erro ao redefinir senha.', 'erro');
     } finally {
       setResetando(false);
+    }
+  };
+
+  const abrirDetalhesGrade = async (u: UsuarioComAluno) => {
+    if (!u.aluno_id) {
+      showToast('Este usuario nao possui registro de aluno.', 'erro');
+      return;
+    }
+    setLoadingGrade(true);
+    setModalGradeOpen(true);
+    try {
+      const data = await adminService.getGradeAlunoAdmin(Number(u.aluno_id));
+      setGradeAluno(data);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erro ao carregar grade.', 'erro');
+    } finally {
+      setLoadingGrade(false);
     }
   };
 
@@ -247,13 +294,14 @@ export const GestaoUsuariosPage = () => {
                 <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Matricula</th>
                 <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Perfil</th>
                 <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Curso</th>
-                <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Status</th>
+                <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Carga</th>
+                <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Situacao</th>
                 <th style={{ padding: '0.65rem 1rem', fontWeight: 700, textAlign: 'center' }}>Acoes</th>
               </tr>
             </thead>
             <tbody>
               {usuariosFiltrados.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum usuario encontrado.</td></tr>
+                <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum usuario encontrado.</td></tr>
               ) : usuariosFiltrados.map(u => {
                 const isSelf = isCurrentUser(u);
                 const semPerfil = u.tem_perfil === false;
@@ -267,10 +315,15 @@ export const GestaoUsuariosPage = () => {
                   </td>
                   <td style={{ padding: '0.65rem 1rem' }}>{u.matricula || '-'}</td>
                   <td style={{ padding: '0.65rem 1rem' }}>{PERFIL_LABELS[u.perfil] || u.perfil}</td>
-                  <td style={{ padding: '0.65rem 1rem' }}>{u.curso_nome || '-'}</td>
+                  <td style={{ padding: '0.65rem 1rem' }}>{u.aluno_curso_nome || u.curso_nome || '-'}</td>
+                  <td style={{ padding: '0.65rem 1rem' }}>
+                    {u.categoria_carga_horas ? (
+                      <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{u.categoria_carga_horas}h/sem</span>
+                    ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                  </td>
                   <td style={{ padding: '0.65rem 1rem' }}>
                     <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, background: (STATUS_COLORS[u.status] || '#6B7280') + '20', color: STATUS_COLORS[u.status] || '#6B7280' }}>
-                      {u.status === 'ativo' ? 'Ativo' : u.status === 'suspenso' ? 'Bloqueado' : 'Inativo'}
+                      {SITUACAO_LABELS[u.situacao_vinculo || ''] || (u.status === 'ativo' ? 'Ativo' : u.status === 'suspenso' ? 'Bloqueado' : 'Inativo')}
                     </span>
                   </td>
                   <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
@@ -279,6 +332,9 @@ export const GestaoUsuariosPage = () => {
                         <>
                           <button onClick={() => abrirPerfil(u)} title="Ver perfil" style={{ background: '#EFF6FF', border: 'none', borderRadius: 6, padding: 6, cursor: 'pointer', color: '#2563EB' }}><Eye size={15} /></button>
                           <button onClick={() => abrirEditar(u)} title="Editar" style={{ background: '#FEF3C7', border: 'none', borderRadius: 6, padding: 6, cursor: 'pointer', color: '#D97706' }}><Edit3 size={15} /></button>
+                          {u.perfil === 'aluno' && u.aluno_id && (
+                            <button onClick={() => abrirDetalhesGrade(u)} title="Ver Horario Firmado" style={{ background: '#EDE9FE', border: 'none', borderRadius: 6, padding: 6, cursor: 'pointer', color: '#7C3AED' }}><Calendar size={15} /></button>
+                          )}
                           <button
                             onClick={() => abrirModalResetSenha(u)}
                             disabled={isSelf}
@@ -316,6 +372,7 @@ export const GestaoUsuariosPage = () => {
         </div>
       )}
 
+      {/* Modal Perfil */}
       {modalPerfilOpen && usuarioSelecionado && (
         <div className="modal-overlay">
           <div className="modal-card" style={{ maxWidth: 520 }}>
@@ -335,7 +392,12 @@ export const GestaoUsuariosPage = () => {
                 ['E-mail Pessoal', usuarioSelecionado.email_pessoal || '-'],
                 ['Endereco', usuarioSelecionado.endereco || '-'],
                 ['Data de Nascimento', usuarioSelecionado.data_nascimento ? new Date(usuarioSelecionado.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'],
-                ['Curso', usuarioSelecionado.curso_nome || '-'],
+                ['Curso', usuarioSelecionado.aluno_curso_nome || usuarioSelecionado.curso_nome || '-'],
+                ['Periodo', usuarioSelecionado.periodo_nome || '-'],
+                ['Turno', usuarioSelecionado.turno_nome || '-'],
+                ['Setor/Clinica', usuarioSelecionado.setor_nome || '-'],
+                ['Categoria Carga', usuarioSelecionado.categoria_carga_horas ? `${usuarioSelecionado.categoria_carga_horas}h semanais` : 'Nao definida'],
+                ['Situacao Vinculo', SITUACAO_LABELS[usuarioSelecionado.situacao_vinculo || ''] || usuarioSelecionado.situacao_vinculo || '-'],
                 ['Criado em', usuarioSelecionado.criado_em ? new Date(usuarioSelecionado.criado_em).toLocaleDateString('pt-BR') : '-'],
               ].map(([label, valor]) => (
                 <div key={label}>
@@ -344,7 +406,12 @@ export const GestaoUsuariosPage = () => {
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', gap: '0.75rem' }}>
+              {usuarioSelecionado.perfil === 'aluno' && usuarioSelecionado.aluno_id && (
+                <button onClick={() => { setModalPerfilOpen(false); abrirDetalhesGrade(usuarioSelecionado); }} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Calendar size={14} /> Ver Horario Firmado
+                </button>
+              )}
               <button onClick={() => { setModalPerfilOpen(false); abrirEditar(usuarioSelecionado); }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Edit3 size={14} /> Editar
               </button>
@@ -353,9 +420,10 @@ export const GestaoUsuariosPage = () => {
         </div>
       )}
 
+      {/* Modal Editar */}
       {modalEditarOpen && (
         <div className="modal-overlay">
-          <div className="modal-card" style={{ maxWidth: 580 }}>
+          <div className="modal-card" style={{ maxWidth: 640, maxHeight: '85vh', overflow: 'auto' }}>
             <div className="modal-header">
               <h3 style={{ color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Edit3 size={18} /> Editar Usuario
@@ -377,7 +445,7 @@ export const GestaoUsuariosPage = () => {
                 </div>
               </div>
 
-              <strong style={{ fontSize: '0.82rem', color: 'var(--primary)', marginTop: '0.3rem' }}>Dados Complementares (Opcionais)</strong>
+              <strong style={{ fontSize: '0.82rem', color: 'var(--primary)', marginTop: '0.3rem' }}>Dados Complementares</strong>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                 <div><label style={labelStyle}>Telefone</label><input value={formEditar.telefone || ''} onChange={e => setFormEditar({ ...formEditar, telefone: e.target.value })} placeholder="(81) 99999-0000" style={inputStyle} /></div>
                 <div><label style={labelStyle}>E-mail Pessoal</label><input value={formEditar.email_pessoal || ''} onChange={e => setFormEditar({ ...formEditar, email_pessoal: e.target.value })} placeholder="email@pessoal.com" style={inputStyle} /></div>
@@ -388,11 +456,46 @@ export const GestaoUsuariosPage = () => {
               {formEditar.perfil === 'aluno' && (
                 <>
                   <strong style={{ fontSize: '0.82rem', color: 'var(--primary)', marginTop: '0.3rem' }}>Dados Academicos</strong>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                    <div><label style={labelStyle}>Categoria de Carga Horaria</label>
+                      <select value={formEditar.categoria_carga_id || ''} onChange={e => setFormEditar({ ...formEditar, categoria_carga_id: e.target.value ? Number(e.target.value) : undefined })} style={{ ...inputStyle, background: '#FFF' }}>
+                        <option value="">Nao definida</option>
+                        {categoriasCarga.filter(c => c.ativo).map(c => (
+                          <option key={c.id} value={c.id}>{c.nome} ({c.horas_semanais}h)</option>
+                        ))}
+                      </select>
+                    </div>
                     <div><label style={labelStyle}>Curso</label>
-                      <select value={formEditar.curso_id || ''} onChange={e => setFormEditar({ ...formEditar, curso_id: e.target.value })} style={{ ...inputStyle, background: '#FFF' }}>
+                      <select value={formEditar.aluno_curso_id || formEditar.curso_id || ''} onChange={e => setFormEditar({ ...formEditar, aluno_curso_id: e.target.value, curso_id: e.target.value })} style={{ ...inputStyle, background: '#FFF' }}>
                         <option value="">Selecione...</option>
                         {(opcoes.cursos || []).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                    </div>
+                    <div><label style={labelStyle}>Periodo</label>
+                      <select value={formEditar.periodo_id || ''} onChange={e => setFormEditar({ ...formEditar, periodo_id: e.target.value })} style={{ ...inputStyle, background: '#FFF' }}>
+                        <option value="">Selecione...</option>
+                        {(opcoes.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                      </select>
+                    </div>
+                    <div><label style={labelStyle}>Turno</label>
+                      <select value={formEditar.turno_id || ''} onChange={e => setFormEditar({ ...formEditar, turno_id: e.target.value })} style={{ ...inputStyle, background: '#FFF' }}>
+                        <option value="">Selecione...</option>
+                        {(opcoes.turnos || []).map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                      </select>
+                    </div>
+                    <div><label style={labelStyle}>Clinica / Setor</label>
+                      <select value={formEditar.setor_id || ''} onChange={e => setFormEditar({ ...formEditar, setor_id: e.target.value ? Number(e.target.value) : undefined })} style={{ ...inputStyle, background: '#FFF' }}>
+                        <option value="">Selecione...</option>
+                        {setoresClinica.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                      </select>
+                    </div>
+                    <div><label style={labelStyle}>Situacao do Vinculo</label>
+                      <select value={formEditar.situacao_vinculo || 'ativo'} onChange={e => setFormEditar({ ...formEditar, situacao_vinculo: e.target.value })} style={{ ...inputStyle, background: '#FFF' }}>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                        <option value="suspenso">Suspenso</option>
+                        <option value="formado">Formado</option>
+                        <option value="desistente">Desistente</option>
                       </select>
                     </div>
                   </div>
@@ -407,6 +510,63 @@ export const GestaoUsuariosPage = () => {
         </div>
       )}
 
+      {/* Modal Detalhes Grade */}
+      {modalGradeOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: 680, maxHeight: '80vh', overflow: 'auto' }}>
+            <div className="modal-header">
+              <h3 style={{ color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Calendar size={18} /> Horario Firmado do Aluno
+              </h3>
+              <button onClick={() => { setModalGradeOpen(false); setGradeAluno(null); }} className="btn-close">&times;</button>
+            </div>
+            {loadingGrade ? (
+              <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Carregando...</p>
+            ) : !gradeAluno || !gradeAluno.tem_grade ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <Clock size={32} style={{ opacity: 0.3, marginBottom: '0.5rem' }} />
+                <p style={{ margin: 0, fontWeight: 600 }}>Nenhum horario firmado</p>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>Este aluno ainda nao confirmou nenhum horario na grade semanal.</p>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem', background: 'var(--bg-main)', padding: '1rem', borderRadius: 8, fontSize: '0.85rem' }}>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Status</span><strong style={{ color: gradeAluno.confirmado ? '#10B981' : '#F59E0B' }}>{gradeAluno.confirmado ? 'Confirmado' : 'Pendente'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Categoria</span><strong>{gradeAluno.categoria_carga || '-'}h semanais</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Total Selecionado</span><strong>{gradeAluno.total_horas || 0}h</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Vigencia</span><strong>{gradeAluno.vigencia_inicio ? new Date(gradeAluno.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} - {gradeAluno.vigencia_fim ? new Date(gradeAluno.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</strong></div>
+                </div>
+
+                {Array.isArray(gradeAluno.selecoes) && gradeAluno.selecoes.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+                    {(gradeAluno.selecoes as Array<{ dia_semana: number; hora_inicio: string; hora_fim: string; confirmado: boolean }>).map((sel, idx) => (
+                      <div key={idx} style={{
+                        background: sel.confirmado ? '#F0FDF4' : '#FFF',
+                        border: sel.confirmado ? '1px solid #BBF7D0' : '1px solid var(--border-color)',
+                        borderRadius: 8,
+                        padding: '0.65rem',
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--primary)', marginBottom: 4 }}>{DIAS_SEMANA[sel.dia_semana] || sel.dia_semana}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 600, fontSize: '0.82rem' }}>
+                          <Clock size={12} /> {sel.hora_inicio} - {sel.hora_fim}
+                        </div>
+                        {sel.confirmado && (
+                          <div style={{ marginTop: 4 }}><CheckCircle size={12} color="#10B981" /> <span style={{ fontSize: '0.7rem', color: '#10B981', fontWeight: 600 }}>Firmado</span></div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma selecao encontrada.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Excluir */}
       {modalExcluirOpen && usuarioExcluir && (
         <div className="modal-overlay">
           <div className="modal-card" style={{ maxWidth: 440 }}>
@@ -430,6 +590,7 @@ export const GestaoUsuariosPage = () => {
         </div>
       )}
 
+      {/* Modal Solicitacoes */}
       {modalSolicitacoesOpen && (
         <div className="modal-overlay">
           <div className="modal-card" style={{ maxWidth: 720, maxHeight: '80vh', overflow: 'auto' }}>
@@ -483,7 +644,7 @@ export const GestaoUsuariosPage = () => {
                                 matricula: s.matricula,
                                 curso_nome: s.curso_nome,
                                 auth_user_id: undefined,
-                              } as Usuario);
+                              } as UsuarioComAluno);
                               setModalResetSenhaOpen(true);
                             }}
                             style={{ padding: '3px 8px', borderRadius: 6, border: 'none', background: '#7C3AED', color: '#FFF', cursor: 'pointer', fontWeight: 600, fontSize: '0.72rem' }}
@@ -501,6 +662,7 @@ export const GestaoUsuariosPage = () => {
         </div>
       )}
 
+      {/* Modal Reset Senha */}
       {modalResetSenhaOpen && usuarioResetSenha && (
         <div className="modal-overlay">
           <div className="modal-card" style={{ maxWidth: 480 }}>

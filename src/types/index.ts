@@ -43,6 +43,7 @@ export interface AlunoDetalhes {
   turno_id: string;
   setor_id?: string;
   categoria_carga: number;
+  categoria_carga_id?: number;
   carga_horaria_semanal_max: number;
   situacao: string;
   curso_nome?: string;
@@ -378,6 +379,31 @@ export interface SolicitacaoResetSenha {
   atendida_em?: string;
   atendida_por?: number;
   admin_nome?: string;
+}
+
+export interface CategoriaCargaHoraria {
+  id: number;
+  nome: string;
+  horas_semanais: number;
+  descricao?: string;
+  ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface UsuarioComAluno extends Usuario {
+  aluno_id?: number;
+  categoria_carga_id?: number;
+  categoria_carga_horas?: number;
+  periodo_id?: string;
+  periodo_nome?: string;
+  turno_id?: string;
+  turno_nome?: string;
+  setor_id?: string;
+  setor_nome?: string;
+  situacao_vinculo?: string;
+  aluno_curso_id?: string;
+  aluno_curso_nome?: string;
 }
 
 export interface LoginPageProps {

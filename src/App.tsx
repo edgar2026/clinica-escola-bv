@@ -24,6 +24,7 @@ const GERENCIA_TABS = ['dashboard-gerencia', 'relatorios'];
 const CONFIG_TABS = [
   'gestao-usuarios',
   'config-cursos', 'config-periodos', 'config-turnos', 'config-supervisores',
+  'config-categorias-carga',
   'config-horarios', 'config-duracao-atendimento', 'config-vagas-horarios',
   'config-limite-semanal', 'config-datas-vigencia', 'config-tolerancia-atraso', 'config-regras-agendamento',
   'config-feriados', 'config-recessos', 'config-bloqueios',
