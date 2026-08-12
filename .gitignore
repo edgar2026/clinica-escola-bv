@@ -56,3 +56,7 @@ CONFIGURACAO_PRIVADA_DEPLOY.md
 
 # Internal docs
 CONTEXTO_SISTEMA.md
+
+# Scripts de diagnóstico com credenciais (nunca comitar)
+check-schema.mjs
+*.mjs
