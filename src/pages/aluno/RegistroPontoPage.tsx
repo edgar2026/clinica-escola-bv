@@ -1,9 +1,14 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { pontoService } from '../../services/pontoService';
 import { useAuth } from '../../context/AuthContext';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { formatarDataCurta } from '../../utils/datas';
 import type { Ponto } from '../../types';
+
+const DIAS_SEMANA: Record<number, string> = {
+  1: 'Segunda-feira', 2: 'Terça-feira', 3: 'Quarta-feira',
+  4: 'Quinta-feira', 5: 'Sexta-feira', 6: 'Sábado',
+};
 
 export const RegistroPontoPage = () => {
   const { showToast } = useAuth();
@@ -19,7 +24,14 @@ export const RegistroPontoPage = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const [statusHoje, setStatusHoje] = useState<{ podeRegistrar: boolean; pontoAberto: boolean; mensagem: string; entradaAberta?: Ponto } | null>(null);
+  const [statusHoje, setStatusHoje] = useState<{
+    podeRegistrar: boolean;
+    pontoAberto: boolean;
+    mensagem: string;
+    entradaAberta?: Ponto;
+    firmadoHoje?: { hora_inicio: string; hora_fim: string } | null;
+    registroConcluido?: boolean;
+  } | null>(null);
   const [batidasDia, setBatidasDia] = useState<Ponto[]>([]);
   const [loadingAcao, setLoadingAcao] = useState(false);
 
@@ -34,9 +46,10 @@ export const RegistroPontoPage = () => {
       setStatusHoje(res);
     } catch {
       setStatusHoje({
-        podeRegistrar: true,
+        podeRegistrar: false,
         pontoAberto: false,
-        mensagem: 'Horário agendado confirmado para hoje.'
+        mensagem: 'Erro ao carregar status.',
+        firmadoHoje: null,
       });
     }
 
@@ -88,7 +101,7 @@ export const RegistroPontoPage = () => {
       lastClickTime.current = 0;
     } else {
       lastClickTime.current = now;
-      showToast('💡 Clique novamente rapidamente para confirmar.', 'info');
+      showToast('Clique novamente rapidamente para confirmar.', 'info');
     }
   };
 
@@ -118,22 +131,71 @@ export const RegistroPontoPage = () => {
   const agora = agoraRef.current;
   const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const dataFormatadaExtenso = agora.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
-  const pontoAberto = statusHoje?.pontoAberto;
 
+  const pontoAberto = statusHoje?.pontoAberto ?? false;
+  const firmadoHoje = statusHoje?.firmadoHoje ?? null;
+  const registroConcluido = statusHoje?.registroConcluido ?? false;
+
+  // Determine button state
   let botaoLabel = 'Registrar Entrada';
   let botaoSubtext = 'Clique duas vezes ou arraste';
+  let botaoDisabled = false;
+  let statusMensagem = '';
+  let statusIcon: 'clock' | 'check' | 'alert' = 'clock';
+
   if (loadingAcao) {
     botaoLabel = 'Registrando...';
     botaoSubtext = 'Aguarde';
+    botaoDisabled = true;
   } else if (pontoAberto) {
     botaoLabel = 'Registrar Saída';
     botaoSubtext = 'Clique duas vezes ou arraste';
+    statusMensagem = `Entrada: ${statusHoje?.entradaAberta?.hora_entrada || '--:--'}`;
+    statusIcon = 'clock';
+  } else if (registroConcluido) {
+    botaoLabel = 'Presença Registrada';
+    botaoSubtext = '';
+    botaoDisabled = true;
+    statusMensagem = 'Sua presença de hoje já foi registrada.';
+    statusIcon = 'check';
+  } else if (!firmadoHoje) {
+    botaoLabel = 'Indisponível';
+    botaoSubtext = '';
+    botaoDisabled = true;
+    statusMensagem = 'Você não possui horário firmado para hoje.';
+    statusIcon = 'alert';
+  } else {
+    // Check if within firmado window
+    const [hInicio, mInicio] = firmadoHoje.hora_inicio.split(':').map(Number);
+    const [hFim, mFim] = firmadoHoje.hora_fim.split(':').map(Number);
+    const inicioMin = hInicio * 60 + mInicio;
+    const fimMin = hFim * 60 + mFim;
+    const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+
+    if (agoraMin < inicioMin) {
+      botaoLabel = 'Aguardando Horário';
+      botaoSubtext = '';
+      botaoDisabled = true;
+      statusMensagem = `Sua entrada estará disponível das ${firmadoHoje.hora_inicio} às ${firmadoHoje.hora_fim}.`;
+      statusIcon = 'alert';
+    } else if (agoraMin > fimMin) {
+      botaoLabel = 'Horário Encerrado';
+      botaoSubtext = '';
+      botaoDisabled = true;
+      statusMensagem = `O horário firmado de hoje (${firmadoHoje.hora_inicio} às ${firmadoHoje.hora_fim}) já foi encerrado.`;
+      statusIcon = 'alert';
+    } else {
+      // Within firmado window
+      botaoLabel = 'Registrar Entrada';
+      botaoSubtext = 'Clique duas vezes ou arraste';
+      botaoDisabled = false;
+      statusMensagem = `Dentro do horário firmado: ${firmadoHoje.hora_inicio} às ${firmadoHoje.hora_fim}`;
+      statusIcon = 'clock';
+    }
   }
 
-  let statusLabel = '';
-  if (pontoAberto && statusHoje?.entradaAberta) {
-    statusLabel = `Entrada: ${statusHoje.entradaAberta.hora_entrada || '--:--'}`;
-  }
+  const buttonBg = pontoAberto ? '#FEE2E2' : botaoDisabled ? '#E2E8F0' : '#D5EDF6';
+  const innerBg = pontoAberto ? '#EF4444' : botaoDisabled ? '#94A3B8' : '#004B76';
 
   return (
     <section style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -166,37 +228,38 @@ export const RegistroPontoPage = () => {
             </div>
 
             <div
-              onDoubleClick={handleDoubleClick}
-              onClick={handleSingleClick}
-              onMouseDown={(e) => handleDragStart(e.clientX)}
-              onMouseMove={(e) => handleDragMove(e.clientX)}
+              onDoubleClick={botaoDisabled ? undefined : handleDoubleClick}
+              onClick={botaoDisabled ? undefined : handleSingleClick}
+              onMouseDown={botaoDisabled ? undefined : (e) => handleDragStart(e.clientX)}
+              onMouseMove={botaoDisabled ? undefined : (e) => handleDragMove(e.clientX)}
               onMouseUp={handleDragEnd}
               onMouseLeave={handleDragEnd}
-              onTouchStart={(e) => handleDragStart(e.touches[0].clientX)}
-              onTouchMove={(e) => handleDragMove(e.touches[0].clientX)}
+              onTouchStart={botaoDisabled ? undefined : (e) => handleDragStart(e.touches[0].clientX)}
+              onTouchMove={botaoDisabled ? undefined : (e) => handleDragMove(e.touches[0].clientX)}
               onTouchEnd={handleDragEnd}
               style={{
                 width: 220,
                 height: 220,
                 borderRadius: '50%',
-                background: pontoAberto ? '#FEE2E2' : '#D5EDF6',
+                background: buttonBg,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: loadingAcao ? 'wait' : 'pointer',
+                cursor: botaoDisabled ? 'not-allowed' : 'pointer',
                 userSelect: 'none',
                 transition: 'transform 0.15s ease, background 0.3s',
                 boxShadow: pontoAberto ? '0 0 30px rgba(239,68,68,0.25)' : '0 0 30px rgba(0,86,145,0.2)',
                 position: 'relative',
-                touchAction: 'none'
+                touchAction: 'none',
+                opacity: botaoDisabled && !pontoAberto ? 0.7 : 1,
               }}
-              title="Clique 2 vezes ou arraste para registrar presença"
+              title={botaoDisabled ? statusMensagem : 'Clique 2 vezes ou arraste para registrar presença'}
             >
               <div style={{
                 width: 170,
                 height: 170,
                 borderRadius: '50%',
-                background: pontoAberto ? '#EF4444' : '#004B76',
+                background: innerBg,
                 color: '#FFFFFF',
                 display: 'flex',
                 flexDirection: 'column',
@@ -210,23 +273,45 @@ export const RegistroPontoPage = () => {
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1.2 }}>
                   {botaoLabel}
                 </span>
-                <span style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 6, fontWeight: 500, maxWidth: 130 }}>
-                  {botaoSubtext}
-                </span>
+                {botaoSubtext && (
+                  <span style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 6, fontWeight: 500, maxWidth: 130 }}>
+                    {botaoSubtext}
+                  </span>
+                )}
               </div>
             </div>
 
-            {statusLabel && (
+            {statusMensagem && (
               <div style={{
                 marginTop: '1rem',
                 padding: '0.5rem 1rem',
                 borderRadius: 8,
-                background: '#FEF3C7',
-                color: '#92400E',
+                background: pontoAberto ? '#FEF3C7' : botaoDisabled ? '#F1F5F9' : '#ECFDF5',
+                color: pontoAberto ? '#92400E' : botaoDisabled ? '#64748B' : '#065F46',
                 fontSize: '0.85rem',
                 fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
               }}>
-                ⏱ {statusLabel}
+                {statusIcon === 'clock' && <Clock size={15} />}
+                {statusIcon === 'check' && <CheckCircle size={15} />}
+                {statusIcon === 'alert' && <AlertTriangle size={15} />}
+                {statusMensagem}
+              </div>
+            )}
+
+            {firmadoHoje && !pontoAberto && !registroConcluido && (
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.4rem 0.8rem',
+                borderRadius: 6,
+                background: '#F0F9FF',
+                border: '1px solid #BAE6FD',
+                fontSize: '0.8rem',
+                color: '#0369A1',
+              }}>
+                {DIAS_SEMANA[agora.getDay() || 7]}: {firmadoHoje.hora_inicio} às {firmadoHoje.hora_fim}
               </div>
             )}
           </div>

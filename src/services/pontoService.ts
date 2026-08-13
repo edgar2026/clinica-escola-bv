@@ -8,6 +8,9 @@ export interface RegistrarPresencaResponse {
   mensagem: string;
   hora?: string;
   segundos_restantantes?: number;
+  no_horario_firmado?: boolean;
+  hora_firmado_inicio?: string | null;
+  hora_firmado_fim?: string | null;
 }
 
 export interface FecharPontosResponse {
@@ -67,7 +70,14 @@ export const pontoService = {
     return { historico: (data as Ponto[]) || [] };
   },
 
-  async getStatusHoje(): Promise<{ podeRegistrar: boolean; pontoAberto: boolean; mensagem: string; entradaAberta?: Ponto }> {
+  async getStatusHoje(): Promise<{
+    podeRegistrar: boolean;
+    pontoAberto: boolean;
+    mensagem: string;
+    entradaAberta?: Ponto;
+    firmadoHoje?: { hora_inicio: string; hora_fim: string } | null;
+    registroConcluido?: boolean;
+  }> {
     const alunoId = await getAlunoId();
 
     const hoje = new Date().toISOString().split('T')[0];
@@ -82,11 +92,37 @@ export const pontoService = {
 
     const pontosHoje = (data || []) as Ponto[];
     const entradaAberta = pontosHoje.find(p => !p.hora_saida);
+    const registroConcluido = pontosHoje.some(p => p.hora_saida && p.hora_saida !== '00:00');
+
+    // Get firmado schedule for today
+    const hojeDate = new Date();
+    let dow = hojeDate.getDay();
+    if (dow === 0) dow = 7;
+
+    let firmadoHoje: { hora_inicio: string; hora_fim: string } | null = null;
+    if (dow >= 1 && dow <= 6) {
+      const { data: gradeData } = await supabase
+        .from('grade_semanal_selecoes')
+        .select('hora_inicio, hora_fim')
+        .eq('aluno_id', Number(alunoId))
+        .eq('confirmado', true)
+        .eq('dia_semana', dow)
+        .limit(1);
+
+      if (gradeData && gradeData.length > 0) {
+        firmadoHoje = {
+          hora_inicio: String(gradeData[0].hora_inicio || ''),
+          hora_fim: String(gradeData[0].hora_fim || ''),
+        };
+      }
+    }
 
     return {
       podeRegistrar: true,
       pontoAberto: !!entradaAberta,
       entradaAberta: entradaAberta || undefined,
+      firmadoHoje,
+      registroConcluido,
       mensagem: entradaAberta
         ? 'Você já possui uma entrada aberta. Registre sua saída.'
         : 'Nenhum registro hoje. Bem-vindo!',

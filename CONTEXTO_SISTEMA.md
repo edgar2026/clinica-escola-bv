@@ -1704,3 +1704,78 @@ Implementar carga horária total editável pelo admin, calcular semanas prevista
 | `src/pages/aluno/AlunoDashboardPage.tsx` | Painel com total, semanal, semanas, realizadas, pendentes |
 | `src/pages/aluno/MeuHorarioFirmadoPage.tsx` | Exibe carga total, semanas previstas |
 | `src/pages/admin/GestaoUsuariosPage.tsx` | Edição de carga_total e data_inicio |
+
+---
+
+## Sessão 2026-08-13: Registro de Presença Produção — Bloqueio Fora do Horário Firmado
+
+### Objetivo
+Fixar o fluxo completo de Registro de Presença para produção: o aluno só pode registrar ENTRADA dentro da janela do horário firmado, com mensagens claras, contagem de horas acadêmicas corretas e fila de análise administrativa.
+
+### Alterações no banco de dados (via MCP supabase-clinica-escola)
+
+**1. Migration `rewrite_registrar_presenca_production`**
+- RPC `registrar_presenca(p_aluno_id)` **reescrita completamente** para produção:
+  - **Bloqueia ENTRADA fora do firmado** — não cria mais registros `aguardando_validacao`
+  - Permite SAÍDA após o término do horário firmado (atividade pode exceder a janela)
+  - Retorna `hora_firmado_inicio` e `hora_firmado_fim` para o frontend exibir o horário
+  - 6 verificações de bloqueio:
+    1. Sem horário firmado para hoje → "Você não possui horário firmado para hoje."
+    2. Antes do início do firmado → "Sua entrada estará disponível das HH:MM às HH:MM."
+    3. Após o fim do firmado → "O horário firmado de hoje (HH:MM às HH:MM) já foi encerrado."
+    4. Já possui presença registrada hoje → "Sua presença de hoje já foi registrada."
+    5. Entrada aberta + saída < 60s → "Aguarde pelo menos 1 minuto..."
+    6. Entrada aberta + saída ≥ 60s → registra saída (sempre permitido)
+  - Horas acadêmicas usam duração do firmado (não minutos brutos) — 1h firmado = 1h crédito ao aprovar
+  - Removida auto-criação de justificativa no RPC (não necessária pois entrada fora firmado é bloqueada)
+
+### Alterações no frontend
+
+**2. `src/services/pontoService.ts`**
+- `RegistrarPresencaResponse`: adicionados `no_horario_firmado`, `hora_firmado_inicio`, `hora_firmado_fim`
+- `getStatusHoje()`: agora retorna `firmadoHoje` (horário firmado do dia) e `registroConcluido`
+
+**3. `src/pages/aluno/RegistroPontoPage.tsx` — Reescrito**
+- Exibe horário firmado do dia (ex: "Quinta-feira: 08:00 às 09:00")
+- Botão condicional:
+  - **Fora do firmado (antes)**: "Aguardando Horário" (disabled), mensagem "Sua entrada estará disponível das HH:MM às HH:MM"
+  - **Fora do firmado (depois)**: "Horário Encerrado" (disabled), mensagem "O horário firmado de hoje (HH:MM às HH:MM) já foi encerrado"
+  - **Sem firmado**: "Indisponível" (disabled), mensagem "Você não possui horário firmado para hoje"
+  - **Dentro do firmado**: "Registrar Entrada" (habilitado), clique duplo ou arraste
+  - **Com entrada aberta**: "Registrar Saída" (vermelho), badge com hora da entrada
+  - **Registro concluído**: "Presença Registrada" (disabled), mensagem de sucesso
+- Mantém aviso "REGISTRO SUJEITO À AUDITORIA" no rodapé
+- Interface limpa: relógio em tempo real, cards de status, histórico do dia
+
+### Regras de negócio confirmadas
+
+1. **Entrada SOMENTE dentro do firmado** — bloqueio total fora da janela (sem exceções, sem `aguardando_validacao`)
+2. **Saída sempre permitida após 60s** — mesmo após fim do firmado
+3. **Horas acadêmicas = duração do firmado** — não minutos reais de permanência
+4. **Sem registros temporários** — elimina fila de `aguardando_validacao` para entradas
+5. **Mensagens claras** — aluno sabe exatamente quando pode registrar
+
+### Verificações via MCP (6 cenários)
+
+| # | Cenário | Resultado |
+|---|---------|-----------|
+| 1 | Firmado existe para aluno 38 (Seg 07-08, Qua 08-09, Qui 08-09, Sex 08-09) | **PASS** |
+| 2 | Horário atual 18:24 (Qui) > fim firmado 09:00 → ENTRADA bloqueada | **PASS** |
+| 3 | RPC retorna mensagem correta "já foi encerrado" | **PASS** |
+| 4 | SAÍDA permitida após fim do firmado (se entrada aberta) | **PASS** |
+| 5 | Horas acadêmicas usam duração do firmado | **PASS** |
+| 6 | Sem registros `aguardando_validacao` residuais | **PASS** (apenas ponto 42 com `falta_justificada`) |
+
+### Build e TypeScript
+
+- `npx tsc --noEmit` — **PASS** (0 erros)
+- `npm run build` — **PASS** (7.15s, 1545 módulos, 238KB gzip 63KB)
+
+### Arquivos modificados
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/migrations/20260813_rewrite_registrar_presenca_production.sql` | Criado via MCP |
+| `src/services/pontoService.ts` | Modificado (tipos + getStatusHoje) |
+| `src/pages/aluno/RegistroPontoPage.tsx` | Reescrito completamente |
+| `CONTEXTO_SISTEMA.md` | Atualizado (esta sessão) |
