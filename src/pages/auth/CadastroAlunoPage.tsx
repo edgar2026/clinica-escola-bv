@@ -89,52 +89,23 @@ export const CadastroAlunoPage = ({ onVoltar }: CadastroAlunoPageProps) => {
       if (error) throw error;
       if (!data.user) throw new Error('Falha ao criar conta de autenticacao.');
 
-      const { data: usuarioData, error: insertError } = await supabase
-        .from('usuarios')
-        .insert({
-          auth_user_id: data.user.id,
-          nome: form.nome,
-          email: form.email,
-          matricula: form.matricula,
-          senha_hash: 'managed_by_auth',
-          perfil: 'aluno',
-          status: 'ativo',
-          primeiro_acesso: 1,
-          curso_id: Number(form.curso_id),
-        } as never)
-        .select()
-        .single();
+      const { data: resultado, error: rpcError } = await supabase.rpc('cadastrar_aluno_inicial', {
+        p_auth_user_id: data.user.id,
+        p_nome: form.nome,
+        p_email: form.email,
+        p_matricula: form.matricula,
+        p_curso_id: Number(form.curso_id),
+        p_periodo_id: Number(form.periodo_id),
+        p_turno_id: Number(form.turno_id),
+      });
 
-      if (insertError) {
-        console.error('Erro ao criar perfil:', insertError);
-        showToast('Conta criada, mas houve um erro ao salvar seus dados. Faca login para completar seu cadastro.', 'erro');
-        onVoltar();
-        return;
+      if (rpcError) throw rpcError;
+      if (!resultado || !resultado.sucesso) {
+        throw new Error(resultado?.mensagem || 'Falha ao salvar seus dados. Tente novamente.');
       }
 
-      const { data: configPadrao } = await supabase
-        .from('configuracoes')
-        .select('valor')
-        .eq('chave', 'carga_horaria_semanal_padrao')
-        .maybeSingle();
-      const cargaPadrao = configPadrao?.valor ? Number(configPadrao.valor) : 4;
-
-      const { error: alunoError } = await supabase
-        .from('alunos')
-        .insert({
-          usuario_id: usuarioData.id,
-          curso_id: Number(form.curso_id),
-          periodo_id: Number(form.periodo_id),
-          turno_id: Number(form.turno_id),
-          carga_horaria_semanal_max: cargaPadrao,
-          situacao: 'ativo',
-        } as never);
-
-      if (alunoError) {
-        console.error('Erro ao criar registro de aluno:', alunoError);
-      }
-
-      showToast('Cadastro realizado! Voce ja pode fazer login.', 'sucesso');
+      await supabase.auth.signOut({ scope: 'local' });
+      showToast(resultado.mensagem || 'Conta criada com sucesso! Voce ja pode entrar no sistema.', 'sucesso');
       onVoltar();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao cadastrar.';

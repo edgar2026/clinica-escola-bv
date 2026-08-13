@@ -34,54 +34,55 @@ export const authService = {
       (profile as Record<string, unknown>).primeiroAcesso = (profile as Record<string, unknown>).primeiro_acesso;
     }
 
+    if (profile && profile.primeiro_acesso === 1 && profile.perfil === 'aluno') {
+      const { data: vinculo } = await supabase
+        .from('alunos')
+        .select('id, curso_id, periodo_id, turno_id, categoria_carga, categoria_carga_id, carga_horaria_semanal_max, situacao')
+        .eq('usuario_id', profile.id)
+        .maybeSingle();
+
+      if (vinculo) {
+        (profile as Record<string, unknown>).aluno = vinculo;
+        const completo = vinculo.curso_id && vinculo.periodo_id && vinculo.turno_id;
+        if (completo) {
+          await supabase.from('usuarios').update({ primeiro_acesso: 0 } as never).eq('id', profile.id);
+          (profile as Record<string, unknown>).primeiro_acesso = 0;
+          (profile as Record<string, unknown>).primeiroAcesso = false;
+        }
+      }
+    }
+
     if (!profile) {
       const meta = user.user_metadata || {};
       const nome = meta.nome || user.email || 'Aluno';
       const matricula = meta.matricula || '';
       const cursoId = meta.curso_id ? Number(meta.curso_id) : null;
 
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('cadastrar_aluno_inicial', {
+        p_auth_user_id: user.id,
+        p_nome: nome,
+        p_email: user.email || '',
+        p_matricula: matricula,
+        p_curso_id: cursoId,
+        p_periodo_id: meta.periodo_id ? Number(meta.periodo_id) : null,
+        p_turno_id: meta.turno_id ? Number(meta.turno_id) : null,
+      });
+
+      if (rpcError || !rpcResult || !rpcResult.sucesso) {
+        console.error('Erro ao reparar perfil automaticamente:', rpcError?.message || rpcResult?.mensagem);
+        return { user, profile: null };
+      }
+
       const { data: novoPerfil } = await supabase
         .from('usuarios')
-        .upsert({
-          auth_user_id: user.id,
-          nome,
-          email: user.email || '',
-          matricula,
-          senha_hash: 'managed_by_auth',
-          perfil: 'aluno',
-          status: 'ativo',
-          primeiro_acesso: 1,
-          curso_id: cursoId,
-        } as never, { onConflict: 'auth_user_id', ignoreDuplicates: false })
-        .select()
-        .single();
+        .select('*')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
 
       if (novoPerfil) {
         if ('primeiro_acesso' in novoPerfil) {
           (novoPerfil as Record<string, unknown>).primeiroAcesso = (novoPerfil as Record<string, unknown>).primeiro_acesso;
         }
-
-        const { data: configPadrao } = await supabase
-          .from('configuracoes')
-          .select('valor')
-          .eq('chave', 'carga_horaria_semanal_padrao')
-          .maybeSingle();
-        const cargaPadrao = configPadrao?.valor ? Number(configPadrao.valor) : 4;
-
-        const { error: alunoError } = await supabase
-          .from('alunos')
-          .insert({
-            usuario_id: novoPerfil.id,
-            curso_id: cursoId,
-            periodo_id: meta.periodo_id ? Number(meta.periodo_id) : null,
-            turno_id: meta.turno_id ? Number(meta.turno_id) : null,
-            carga_horaria_semanal_max: cargaPadrao,
-            situacao: 'ativo',
-          } as never);
-        if (alunoError) {
-          console.error('Erro ao criar registro de aluno (auto):', alunoError);
-        }
-
         return { user, profile: novoPerfil as Usuario };
       }
 
