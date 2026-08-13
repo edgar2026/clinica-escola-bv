@@ -9,6 +9,13 @@ const DIAS_SEMANA: Record<number, string> = {
   1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado',
 };
 
+const formatarHoras = (minutos: number): string => {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m}min`;
+};
+
 export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const { usuario, showToast } = useAuth();
   const [grade, setGrade] = useState<GradeFirmadaInfo | null>(null);
@@ -48,11 +55,11 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       }, 0)
     : 0;
 
-  const horasFirmadas = grade?.horas_firmadas ?? 0;
-  const horasRascunho = grade?.horas_rascunho ?? 0;
+  const horasFirmadas = grade?.horas_firmadas_minutos ?? 0;
+  const horasRascunho = grade?.horas_rascunho_minutos ?? 0;
   const temRascunho = grade && grade.selecoes && grade.selecoes.length > 0 && !firmado && horasRascunho > 0;
-  const precisaComplemento = !firmado && horasFirmadas > 0 && horasFirmadas < (grade?.categoria_carga ?? 0);
-  const precisaReducao = !firmado && horasRascunho > 0 && horasRascunho !== (grade?.categoria_carga ?? 0) && horasFirmadas === 0;
+  const precisaComplemento = !firmado && horasFirmadas > 0 && horasFirmadas < ((grade?.categoria_carga ?? 0) * 60);
+  const precisaReducao = !firmado && horasRascunho > 0 && horasRascunho !== ((grade?.categoria_carga ?? 0) * 60) && horasFirmadas === 0;
 
   const hojeStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
   const formatarDataFim = (d?: string | null) => {
@@ -136,8 +143,8 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
                 </p>
                 <p style={{ margin: '0.25rem 0 0', color: precisaComplemento ? '#1D4ED8' : '#B45309', fontSize: '0.85rem' }}>
                   {precisaComplemento
-                    ? `Sua carga foi aumentada para ${grade?.categoria_carga ?? 0}h. Você possui ${horasFirmadas.toFixed(0)}h firmadas. Selecione mais ${(grade?.categoria_carga ?? 0) - horasFirmadas}h na Grade Semanal.`
-                    : `Sua carga foi reduzida para ${grade?.categoria_carga ?? 0}h. Remova ${(horasRascunho - (grade?.categoria_carga ?? 0)).toFixed(0)}h na Grade Semanal.`
+                    ? `Sua carga foi aumentada para ${formatarHoras((grade?.categoria_carga ?? 0) * 60)}. Você possui ${formatarHoras(horasFirmadas)} firmadas. Selecione mais ${formatarHoras((grade?.categoria_carga ?? 0) * 60 - horasFirmadas)} na Grade Semanal.`
+                    : `Sua carga foi reduzida para ${formatarHoras((grade?.categoria_carga ?? 0) * 60)}. Remova ${formatarHoras(horasRascunho - (grade?.categoria_carga ?? 0) * 60)} na Grade Semanal.`
                   }
                 </p>
               </div>

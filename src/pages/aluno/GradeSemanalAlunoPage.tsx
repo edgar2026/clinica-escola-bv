@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabaseClient';
 import { getAlunoId } from '../../services/helpers';
@@ -10,6 +10,19 @@ const DIAS_SEMANA: Record<number, string> = {
 };
 const DIAS_SEMANA_CURTO: Record<number, string> = {
   1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb',
+};
+
+const formatarHoras = (minutos: number): string => {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m}min`;
+};
+
+const calcularDuracaoMinutos = (inicio: string, fim: string): number => {
+  const [hI, mI] = inicio.split(':').map(Number);
+  const [hF, mF] = fim.split(':').map(Number);
+  return (hF * 60 + mF) - (hI * 60 + mI);
 };
 
 interface InscricaoStatus {
@@ -56,19 +69,13 @@ interface GradeAlunoResponse {
   vigencia_inicio: string;
   vigencia_fim: string;
   categoria_carga: number;
-  horas_firmadas: number;
-  horas_rascunho: number;
-  total_horas_selecionadas: number;
+  horas_firmadas_minutos: number;
+  horas_rascunho_minutos: number;
+  total_horas_selecionadas_minutos: number;
   campos_pendentes?: string[];
   pode_exibir_grade?: boolean;
   confirmado_em?: string;
 }
-
-const calcularDuracaoHoras = (inicio: string, fim: string): number => {
-  const [hI, mI] = inicio.split(':').map(Number);
-  const [hF, mF] = fim.split(':').map(Number);
-  return (hF * 60 + mF - hI * 60 - mI) / 60;
-};
 
 export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const { showToast } = useAuth();
@@ -89,28 +96,32 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
   const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [diaSelecionadoMobile, setDiaSelecionadoMobile] = useState<number>(1);
 
+  const carregandoRef = useRef(false);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const totalHorasSelecionadas = slots
+  const totalMinutosSelecionados = slots
     .filter(s => selecionados.has(s.id))
-    .reduce((acc, s) => acc + calcularDuracaoHoras(s.hora_inicio, s.hora_fim), 0);
+    .reduce((acc, s) => acc + calcularDuracaoMinutos(s.hora_inicio, s.hora_fim), 0);
 
-  const horasFirmadas = gradeData?.horas_firmadas ?? 0;
-  const horasRascunho = gradeData?.horas_rascunho ?? 0;
-  const emModoComplemento = horasFirmadas > 0 && horasFirmadas < categoriaCarga && !gradeData?.confirmado;
-  const emModoReducao = gradeData && gradeData.selecoes.length > 0 && !gradeData.confirmado
-    && horasFirmadas === 0 && horasRascunho > 0 && horasRascunho !== categoriaCarga;
+  const minutosFirmados = gradeData?.horas_firmadas_minutos ?? 0;
+  const minutosRascunho = gradeData?.horas_rascunho_minutos ?? 0;
+  const emModoComplemento = minutosFirmados > 0 && minutosFirmados < categoriaCarga * 60 && !gradeData?.confirmado;
+  const emModoReducao = gradeData && gradeData.selecoes.length > 0 && !gradeData?.confirmado
+    && minutosFirmados === 0 && minutosRascunho > 0 && minutosRascunho !== categoriaCarga * 60;
   const gradeFirmada = gradeData?.confirmado === true;
-  const podeConfirmar = totalHorasSelecionadas === categoriaCarga && categoriaCarga > 0 && totalHorasSelecionadas > 0;
-  const cargaCompleta = totalHorasSelecionadas === categoriaCarga && categoriaCarga > 0;
+  const cargaCompleta = totalMinutosSelecionados === categoriaCarga * 60 && categoriaCarga > 0;
+  const podeConfirmar = cargaCompleta && totalMinutosSelecionados > 0;
   const categoriaNaoDefinida = !gradeFirmada && (!categoriaCarga || categoriaCarga <= 0);
-  const temRascunho = gradeData && gradeData.selecoes.length > 0 && !gradeData.confirmado && horasRascunho > 0;
+  const temRascunho = gradeData && gradeData.selecoes.length > 0 && !gradeData.confirmado && minutosRascunho > 0;
 
   const carregarDados = useCallback(async () => {
+    if (carregandoRef.current) return;
+    carregandoRef.current = true;
     setLoading(true);
     try {
       const id = await getAlunoId();
@@ -153,18 +164,12 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         setConfigId(effectiveConfigId);
       }
 
-      if (grade?.confirmado) {
-        const selSet = new Set<string>(
-          grade.selecoes?.map(s => String(s.vaga_horario_id)) || []
-        );
-        setSelecionados(selSet);
-        return;
-      }
-
       const selSet = new Set<string>(
         grade.selecoes?.map(s => String(s.vaga_horario_id)) || []
       );
       setSelecionados(selSet);
+
+      if (grade?.confirmado) return;
 
       if (effectiveConfigId) {
         const { data: alunoData } = await supabase
@@ -200,6 +205,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       showToast('Erro ao carregar dados: ' + (err instanceof Error ? err.message : ''), 'erro');
     } finally {
       setLoading(false);
+      carregandoRef.current = false;
     }
   }, [showToast]);
 
@@ -244,7 +250,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           s.id === slotId ? { ...s, vagas_disponiveis: resultado.vagas_disponiveis } : s
         ));
       }
-      await carregarDados();
     } catch (err) {
       showToast('Erro ao salvar seleção: ' + (err instanceof Error ? err.message : ''), 'erro');
       setSelecionados(selecionados);
@@ -308,14 +313,12 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
 
   const diasComSlots = Object.keys(slotsPorDia).map(Number).filter(d => DIAS_SEMANA[d]).sort((a, b) => a - b);
 
-  // --- Resumo para modal de confirmação ---
   const resumoPorDia = gradeData?.selecoes?.reduce<Record<number, SelecaoGrade[]>>((acc, s) => {
     if (!acc[s.dia_semana]) acc[s.dia_semana] = [];
     acc[s.dia_semana].push(s);
     return acc;
   }, {}) || {};
 
-  // --- Loading ---
   if (loading) {
     return (
       <section style={{ width: '100%' }}>
@@ -326,7 +329,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     );
   }
 
-  // --- Campos pendentes ---
   if (camposPendentes.length > 0 && !gradeFirmada) {
     return (
       <section style={{ width: '100%' }}>
@@ -355,7 +357,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     );
   }
 
-  // --- Dados indisponíveis ---
   if (!inscricao) {
     return (
       <section style={{ width: '100%' }}>
@@ -373,7 +374,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     );
   }
 
-  // --- Grade firmada (totalmente confirmada) ---
   if (gradeFirmada) {
     const selecoesPorDia = gradeData?.selecoes?.reduce<Record<number, SelecaoGrade[]>>((acc, s) => {
       if (!acc[s.dia_semana]) acc[s.dia_semana] = [];
@@ -392,7 +392,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         <div style={{ background: '#D1FAE5', border: '1px solid #10B981', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', width: '100%' }}>
           <Lock size={20} color="#065F46" style={{ flexShrink: 0 }} />
           <p style={{ margin: 0, color: '#065F46', fontWeight: 700, fontSize: '0.92rem' }}>
-            Horário Firmado — Carga completa: {totalHorasSelecionadas}h de {categoriaCarga}h — Não é possível alterar.
+            Horário Firmado — Carga completa: {formatarHoras(totalMinutosSelecionados)} de {formatarHoras(categoriaCarga * 60)} — Não é possível alterar.
           </p>
         </div>
 
@@ -426,7 +426,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     );
   }
 
-  // --- Inscrição não aberta ---
   if (!inscricao.aberta && !temRascunho && !emModoComplemento) {
     return (
       <section style={{ width: '100%' }}>
@@ -461,11 +460,10 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     );
   }
 
-  // --- Renderização do Card de Vaga ---
   const renderSlotCard = (slot: SlotGrade) => {
     const isSelected = selecionados.has(slot.id);
     const isFirmado = gradeData?.selecoes?.some(s => s.vaga_horario_id === Number(slot.id) && s.confirmado) ?? false;
-    const duracao = calcularDuracaoHoras(slot.hora_inicio, slot.hora_fim);
+    const duracaoMin = calcularDuracaoMinutos(slot.hora_inicio, slot.hora_fim);
     const lotado = slot.vagas_disponiveis <= 0 && !isSelected;
     const bloqueado = (cargaCompleta && !isSelected && !isFirmado) || lotado;
 
@@ -516,7 +514,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           }}>
             <Clock size={15} color={isFirmado ? '#10B981' : isSelected ? 'var(--primary)' : '#64748B'} />
             {slot.hora_inicio} – {slot.hora_fim}
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94A3B8', marginLeft: 2 }}>({duracao}h)</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94A3B8', marginLeft: 2 }}>({formatarHoras(duracaoMin)})</span>
           </div>
           <span style={{
             background: badgeBg, color: badgeColor, padding: '0.25rem 0.65rem', borderRadius: 20,
@@ -534,42 +532,39 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     );
   };
 
-  // --- Interface principal: seleção / complemento / redução ---
   return (
     <section style={{ width: '100%', paddingBottom: isMobile ? '5rem' : '1rem' }}>
       <div className="page-header">
         <h1 className="page-title">Grade Semanal de Prática</h1>
         <p className="page-subtitle">
           {emModoComplemento
-            ? `Complemento: selecione mais ${(categoriaCarga - horasFirmadas).toFixed(0)}h para completar sua carga de ${categoriaCarga}h.`
+            ? `Complemento: selecione mais ${formatarHoras(categoriaCarga * 60 - minutosFirmados)} para completar sua carga de ${formatarHoras(categoriaCarga * 60)}.`
             : emModoReducao
-              ? `Ajuste: remova ${(horasRascunho - categoriaCarga).toFixed(0)}h para atingir sua carga de ${categoriaCarga}h.`
-              : `Selecione os horários de prática conforme sua carga semanal (${categoriaCarga}h).`
+              ? `Ajuste: remova ${formatarHoras(minutosRascunho - categoriaCarga * 60)} para atingir sua carga de ${formatarHoras(categoriaCarga * 60)}.`
+              : `Selecione os horários de prática conforme sua carga semanal (${formatarHoras(categoriaCarga * 60)}).`
           }
         </p>
       </div>
 
-      {/* Banner de complemento (aumento) */}
       {emModoComplemento && (
         <div style={{ background: '#EFF6FF', border: '2px solid #3B82F6', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 2px 8px rgba(59,130,246,0.15)', width: '100%' }}>
           <ArrowRight size={24} color="#2563EB" style={{ flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: 800, color: '#1E40AF', fontSize: '0.95rem' }}>Modo Complemento — Aumento de Carga</div>
             <div style={{ fontSize: '0.85rem', color: '#1D4ED8', marginTop: 2 }}>
-              Sua carga foi aumentada para <strong>{categoriaCarga}h</strong>. Você já possui <strong>{horasFirmadas.toFixed(0)}h firmadas</strong> (bloqueadas). Selecione mais <strong>{(categoriaCarga - horasFirmadas).toFixed(0)}h</strong> e confirme o complemento.
+              Sua carga foi aumentada para <strong>{formatarHoras(categoriaCarga * 60)}</strong>. Você já possui <strong>{formatarHoras(minutosFirmados)} firmadas</strong> (bloqueadas). Selecione mais <strong>{formatarHoras(categoriaCarga * 60 - minutosFirmados)}</strong> e confirme o complemento.
             </div>
           </div>
         </div>
       )}
 
-      {/* Banner de redução */}
       {emModoReducao && (
         <div style={{ background: '#FEF3C7', border: '2px solid #F59E0B', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 2px 8px rgba(245,158,11,0.2)', width: '100%' }}>
           <AlertTriangle size={24} color="#D97706" style={{ flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.95rem' }}>Modo Ajuste — Redução de Carga</div>
             <div style={{ fontSize: '0.85rem', color: '#B45309', marginTop: 2 }}>
-              Sua carga foi reduzida para <strong>{categoriaCarga}h</strong>. Você possui <strong>{horasRascunho.toFixed(0)}h selecionadas</strong>. Remova <strong>{(horasRascunho - categoriaCarga).toFixed(0)}h</strong> e confirme com o total exato.
+              Sua carga foi reduzida para <strong>{formatarHoras(categoriaCarga * 60)}</strong>. Você possui <strong>{formatarHoras(minutosRascunho)} selecionadas</strong>. Remova <strong>{formatarHoras(minutosRascunho - categoriaCarga * 60)}</strong> e confirme com o total exato.
             </div>
           </div>
         </div>
@@ -585,7 +580,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         </div>
       )}
 
-      {/* Card Informativo */}
       <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid var(--border-color)', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.25rem', fontSize: '0.88rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', width: '100%' }}>
         <div>
           <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Período de Inscrição</span>
@@ -602,13 +596,13 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         <div>
           <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Carga Semanal</span>
           <div style={{ fontWeight: 700, color: cargaCompleta ? '#10B981' : categoriaCarga > 0 ? 'var(--primary)' : '#F59E0B', marginTop: 2 }}>
-            {categoriaCarga > 0 ? `${categoriaCarga}h semanais` : 'Não definida'}
+            {categoriaCarga > 0 ? `${formatarHoras(categoriaCarga * 60)} semanais` : 'Não definida'}
           </div>
         </div>
-        {horasFirmadas > 0 && !gradeFirmada && (
+        {minutosFirmados > 0 && !gradeFirmada && (
           <div>
             <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Firmadas</span>
-            <div style={{ fontWeight: 700, color: '#065F46', marginTop: 2 }}>{horasFirmadas.toFixed(0)}h</div>
+            <div style={{ fontWeight: 700, color: '#065F46', marginTop: 2 }}>{formatarHoras(minutosFirmados)}</div>
           </div>
         )}
       </div>
@@ -624,7 +618,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1rem', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {diasComSlots.map(dia => {
               const isActive = dia === diaSelecionadoMobile;
-              const horasNoDia = (slotsPorDia[dia] || []).filter(s => selecionados.has(s.id)).reduce((sum, s) => sum + calcularDuracaoHoras(s.hora_inicio, s.hora_fim), 0);
+              const horasNoDia = (slotsPorDia[dia] || []).filter(s => selecionados.has(s.id)).reduce((sum, s) => sum + calcularDuracaoMinutos(s.hora_inicio, s.hora_fim), 0);
               return (
                 <button key={dia} onClick={() => setDiaSelecionadoMobile(dia)} style={{
                   padding: '0.55rem 0.9rem', borderRadius: 20,
@@ -638,7 +632,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
                   {DIAS_SEMANA_CURTO[dia] || DIAS_SEMANA[dia]}
                   {horasNoDia > 0 && (
                     <span style={{ background: isActive ? 'var(--secondary)' : '#E2E8F0', color: isActive ? 'var(--primary-dark)' : 'var(--primary)', borderRadius: 10, padding: '1px 6px', fontSize: '0.7rem', fontWeight: 800 }}>
-                      {horasNoDia}h
+                      {formatarHoras(horasNoDia)}
                     </span>
                   )}
                 </button>
@@ -670,7 +664,6 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
         </div>
       )}
 
-      {/* Barra de Resumo (Sticky) */}
       <div style={{
         position: 'sticky', bottom: 0, background: '#FFF', borderRadius: 12,
         border: cargaCompleta ? '2px solid #10B981' : '1px solid var(--border-color)',
@@ -683,15 +676,15 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
             <span style={{
               fontSize: '1.4rem', fontWeight: 800,
-              color: cargaCompleta ? '#10B981' : totalHorasSelecionadas > categoriaCarga ? '#EF4444' : 'var(--primary)',
+              color: cargaCompleta ? '#10B981' : totalMinutosSelecionados > categoriaCarga * 60 ? '#EF4444' : 'var(--primary)',
             }}>
-              {totalHorasSelecionadas}h
+              {formatarHoras(totalMinutosSelecionados)}
             </span>
-            <span style={{ fontSize: '0.9rem', color: '#94A3B8', fontWeight: 600 }}>/ {categoriaCarga > 0 ? `${categoriaCarga}h` : '?'}</span>
+            <span style={{ fontSize: '0.9rem', color: '#94A3B8', fontWeight: 600 }}>/ {categoriaCarga > 0 ? formatarHoras(categoriaCarga * 60) : '?'}</span>
           </div>
           {cargaCompleta && (
             <div style={{ fontSize: '0.78rem', color: '#10B981', fontWeight: 700, marginTop: 2 }}>
-              Carga completa: {totalHorasSelecionadas}h de {categoriaCarga}h
+              Carga completa: {formatarHoras(totalMinutosSelecionados)} de {formatarHoras(categoriaCarga * 60)}
             </div>
           )}
         </div>
@@ -721,23 +714,22 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
             </button>
           )}
 
-          {!podeConfirmar && totalHorasSelecionadas > 0 && totalHorasSelecionadas !== categoriaCarga && (
+          {!podeConfirmar && totalMinutosSelecionados > 0 && totalMinutosSelecionados !== categoriaCarga * 60 && (
             <span style={{
               fontSize: '0.78rem', fontWeight: 700,
-              color: totalHorasSelecionadas > categoriaCarga ? '#EF4444' : '#F59E0B',
+              color: totalMinutosSelecionados > categoriaCarga * 60 ? '#EF4444' : '#F59E0B',
               display: 'flex', alignItems: 'center', gap: 4,
             }}>
               <AlertTriangle size={14} />
-              {totalHorasSelecionadas > categoriaCarga
-                ? `Excedeu ${totalHorasSelecionadas - categoriaCarga}h`
-                : `Faltam ${categoriaCarga - totalHorasSelecionadas}h`
+              {totalMinutosSelecionados > categoriaCarga * 60
+                ? `Excedeu ${formatarHoras(totalMinutosSelecionados - categoriaCarga * 60)}`
+                : `Faltam ${formatarHoras(categoriaCarga * 60 - totalMinutosSelecionados)}`
               }
             </span>
           )}
         </div>
       </div>
 
-      {/* Modal de Confirmação com Resumo */}
       <ConfirmModal
         isOpen={confirmModalOpen}
         title="Confirmar Horário Firmado"
@@ -747,7 +739,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           Object.entries(resumoPorDia).map(([dia, sels]) =>
             `${DIAS_SEMANA[Number(dia)]}: ${sels.map(s => `${s.hora_inicio}–${s.hora_fim}`).join(', ')}`
           ).join('\n') +
-          `\n\nTotal: ${totalHorasSelecionadas}h de ${categoriaCarga}h\n\n` +
+          `\n\nTotal: ${formatarHoras(totalMinutosSelecionados)} de ${formatarHoras(categoriaCarga * 60)}\n\n` +
           `Após a confirmação, o horário será firmado para toda a vigência e não poderá ser alterado.`
         }
         confirmText="Sim, Confirmar Horário"

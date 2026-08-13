@@ -438,9 +438,9 @@ export interface GradeFirmadaInfo {
   vigencia_fim?: string | null;
   config_status?: string | null;
   categoria_carga: number;
-  horas_firmadas?: number;
-  horas_rascunho?: number;
-  total_horas_selecionadas?: number;
+  horas_firmadas_minutos?: number;
+  horas_rascunho_minutos?: number;
+  total_horas_selecionadas_minutos?: number;
   campos_pendentes?: string[];
   pode_exibir_grade?: boolean;
 }
