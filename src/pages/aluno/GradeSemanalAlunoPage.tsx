@@ -194,7 +194,23 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
 
         if (errSlots) throw errSlots;
         const loadedSlots = (slotsData as SlotGrade[]) || [];
-        setSlots(loadedSlots);
+
+        const firmadoSlots: SlotGrade[] = (grade?.selecoes || [])
+          .filter(s => s.confirmado && !loadedSlots.some(ls => ls.id === String(s.vaga_horario_id)))
+          .map(s => ({
+            id: String(s.vaga_horario_id),
+            setor_id: '',
+            dia_semana: s.dia_semana,
+            hora_inicio: s.hora_inicio,
+            hora_fim: s.hora_fim,
+            capacidade_max: s.capacidade_max ?? 5,
+            vagas_disponiveis: s.vagas_disponiveis ?? 0,
+            setores: null,
+            status: 'ativo',
+          }));
+
+        const allSlots = [...loadedSlots, ...firmadoSlots];
+        setSlots(allSlots);
 
         if (loadedSlots.length > 0) {
           const diasDisponiveis = Array.from(new Set(loadedSlots.map(s => s.dia_semana))).sort((a, b) => a - b);
@@ -313,11 +329,17 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
 
   const diasComSlots = Object.keys(slotsPorDia).map(Number).filter(d => DIAS_SEMANA[d]).sort((a, b) => a - b);
 
-  const resumoPorDia = gradeData?.selecoes?.reduce<Record<number, SelecaoGrade[]>>((acc, s) => {
-    if (!acc[s.dia_semana]) acc[s.dia_semana] = [];
-    acc[s.dia_semana].push(s);
-    return acc;
-  }, {}) || {};
+  const resumoPorDia: Record<number, SelecaoGrade[]> = {};
+  slots
+    .filter(s => selecionados.has(s.id))
+    .forEach(s => {
+      if (!resumoPorDia[s.dia_semana]) resumoPorDia[s.dia_semana] = [];
+      const isFirmado = gradeData?.selecoes?.some(sel => sel.vaga_horario_id === Number(s.id) && sel.confirmado) ?? false;
+      resumoPorDia[s.dia_semana].push({
+        id: 0, vaga_horario_id: Number(s.id), dia_semana: s.dia_semana,
+        hora_inicio: s.hora_inicio, hora_fim: s.hora_fim, confirmado: isFirmado,
+      });
+    });
 
   if (loading) {
     return (
@@ -552,7 +574,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           <div>
             <div style={{ fontWeight: 800, color: '#1E40AF', fontSize: '0.95rem' }}>Modo Complemento — Aumento de Carga</div>
             <div style={{ fontSize: '0.85rem', color: '#1D4ED8', marginTop: 2 }}>
-              Sua carga foi aumentada para <strong>{formatarHoras(categoriaCarga * 60)}</strong>. Você já possui <strong>{formatarHoras(minutosFirmados)} firmadas</strong> (bloqueadas). Selecione mais <strong>{formatarHoras(categoriaCarga * 60 - minutosFirmados)}</strong> e confirme o complemento.
+              Sua carga foi alterada para <strong>{formatarHoras(categoriaCarga * 60)}</strong>. Você possui <strong>{formatarHoras(minutosFirmados)} firmadas</strong> e precisa selecionar mais <strong>{formatarHoras(categoriaCarga * 60 - minutosFirmados)}</strong>.
             </div>
           </div>
         </div>
@@ -694,7 +716,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
             <RefreshCw size={14} /> <span className="hide-mobile">Atualizar</span>
           </button>
 
-          {temRascunho && !emModoComplemento && (
+          {(temRascunho || emModoComplemento) && (
             <button onClick={handleCancelarSelecao} disabled={cancelando} style={{
               display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.55rem 0.85rem',
               borderRadius: 8, border: '1px solid #E2E8F0', background: '#FFF', color: '#64748B',
@@ -710,7 +732,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
               boxShadow: '0 2px 8px rgba(16,185,129,0.3)', opacity: saving ? 0.7 : 1,
               cursor: saving ? 'not-allowed' : 'pointer', padding: '0.55rem 1rem', fontSize: '0.88rem',
             }}>
-              {saving ? 'Confirmando...' : <><CheckCircle size={16} /> Confirmar Horário</>}
+              {saving ? 'Confirmando...' : <><CheckCircle size={16} /> {emModoComplemento ? 'Confirmar Complemento' : 'Confirmar Horário'}</>}
             </button>
           )}
 
@@ -732,17 +754,31 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
 
       <ConfirmModal
         isOpen={confirmModalOpen}
-        title="Confirmar Horário Firmado"
+        title={emModoComplemento ? "Confirmar Complemento" : "Confirmar Horário Firmado"}
         message={
-          `Tem certeza que deseja confirmar este horário?\n\n` +
-          `Resumo:\n` +
-          Object.entries(resumoPorDia).map(([dia, sels]) =>
-            `${DIAS_SEMANA[Number(dia)]}: ${sels.map(s => `${s.hora_inicio}–${s.hora_fim}`).join(', ')}`
-          ).join('\n') +
-          `\n\nTotal: ${formatarHoras(totalMinutosSelecionados)} de ${formatarHoras(categoriaCarga * 60)}\n\n` +
-          `Após a confirmação, o horário será firmado para toda a vigência e não poderá ser alterado.`
+          emModoComplemento
+            ? (
+              `Tem certeza que deseja confirmar o complemento?\n\n` +
+              `Resumo:\n` +
+              `• Horários já firmados: ${formatarHoras(minutosFirmados)}\n` +
+              `• Novos horários selecionados:\n` +
+              Object.entries(resumoPorDia).map(([dia, sels]) =>
+                `  ${DIAS_SEMANA[Number(dia)]}: ${sels.filter(s => !s.confirmado).map(s => `${s.hora_inicio}–${s.hora_fim}`).join(', ')}`
+              ).filter(l => !l.endsWith(': ')).join('\n') +
+              `\n\nTotal: ${formatarHoras(minutosFirmados)} + ${formatarHoras(totalMinutosSelecionados - minutosFirmados)} = ${formatarHoras(totalMinutosSelecionados)} de ${formatarHoras(categoriaCarga * 60)}\n\n` +
+              `Após a confirmação, todos os horários serão firmados para toda a vigência.`
+            )
+            : (
+              `Tem certeza que deseja confirmar este horário?\n\n` +
+              `Resumo:\n` +
+              Object.entries(resumoPorDia).map(([dia, sels]) =>
+                `${DIAS_SEMANA[Number(dia)]}: ${sels.map(s => `${s.hora_inicio}–${s.hora_fim}`).join(', ')}`
+              ).join('\n') +
+              `\n\nTotal: ${formatarHoras(totalMinutosSelecionados)} de ${formatarHoras(categoriaCarga * 60)}\n\n` +
+              `Após a confirmação, o horário será firmado para toda a vigência e não poderá ser alterado.`
+            )
         }
-        confirmText="Sim, Confirmar Horário"
+        confirmText={emModoComplemento ? "Sim, Confirmar Complemento" : "Sim, Confirmar Horário"}
         cancelText="Voltar e Editar"
         confirmVariant="success"
         onConfirm={handleConfirmarGrade}
