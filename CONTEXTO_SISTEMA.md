@@ -1556,3 +1556,61 @@ Após a sessão anterior (minutos inteiros), o modo complemento não estava func
 
 - `npx tsc --noEmit` — **PASS** (0 erros)
 - `npm run build` — **PASS** (6.61s, 1545 módulos)
+
+---
+
+## Sessão 2026-08-13: Correção de Vagas Fantasma (Phantom Occupancy)
+
+### Problema Relatado
+Horários de quarta-feira 07:00–08:00 e 08:00–09:00 apareciam como "Indisponível" mesmo sem alunos firmados.
+
+### Causa Raiz
+
+A Edge Function `excluir-usuario` (v3) deletava registros de `grade_semanal_selecoes` ao excluir alunos de teste, mas **não restaurava** `vagas_disponiveis` em `vagas_horarios`. Sessões anteriores confirmaram grades para alunos 16 e 17 (decrementando vagas), e depois esses alunos foram deletados — as seleções foram removidas em cascata, mas as vagas nunca foram devolvidas.
+
+**Dados verificados via MCP:**
+- Slots 66 (07:00-08:00) e 67 (08:00-09:00): `vagas_disponiveis=0`, `capacidade_max=5`
+- `grade_semanal_selecoes`: **0 registros** (todos deletados por testes anteriores)
+- `grade_semanal_selecoes WHERE confirmado=true`: **0 registros** (nenhuma grade firmada)
+- Efeito cascata: **74 slots** afetados em todos os dias da semana (24 com vagas phantom)
+
+### Correções Aplicadas
+
+**1. Dados (via MCP):**
+- Reset de `vagas_disponiveis` para `capacidade_max` em todos os slots sem seleções correspondentes
+- Transação de teste com rollback confirmou correção antes da aplicação permanente
+- Resultado: 74/74 slots com `vagas_disponiveis = capacidade_max`
+
+**2. Edge Function `excluir-usuario` (v4):**
+- Antes de deletar `grade_semanal_selecoes`, busca as seleções do aluno
+- Após deletar, incrementa `vagas_disponiveis` em `vagas_horarios` para cada slot afetado
+- Previne futuras phantom occupancies
+
+**3. Resíduos de teste removidos:**
+- Aluno "edgar teste 3" (aluno_id=34, usuario_id=50) — removido (usuarios + alunos)
+- Registro de aluno de "Maria Rita" (aluno_id=20) — removido (mantido usuario admin)
+- Nenhum dado real afetado
+
+### Verificação
+
+| # | Verificação | Resultado |
+|---|-------------|-----------|
+| 1 | Slots quarta: `vagas_disponiveis=5` (capacidade=5) | **PASS** |
+| 2 | Todos 14 slots quarta: "Disponível" | **PASS** |
+| 3 | 0 seleções no sistema | **PASS** |
+| 4 | 0 grades firmadas | **PASS** |
+| 5 | 0 alunos restantes (após limpeza) | **PASS** |
+| 6 | 74/74 slots: `vagas_disponiveis = capacidade_max` | **PASS** |
+| 7 | `npx tsc --noEmit` — 0 erros | **PASS** |
+| 8 | `npm run build` — 7.40s, 1545 módulos | **PASS** |
+| 9 | Edge Function v4 deployada | **PASS** |
+
+### Lição Aprendida
+
+A Edge Function de exclusão de usuário deve **restaurar vagas** ao deletar seleções de grade. Qualquer operação de DELETE em `grade_semanal_selecoes` deve incrementar `vagas_disponiveis` no slot correspondente.
+
+### Arquivos modificados
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/excluir-usuario/index.ts` | v4: restaura vagas ao deletar seleções |

@@ -60,10 +60,34 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (aluno) {
+      // Fetch grade selections BEFORE deleting to restore vagas_disponiveis
+      const { data: selecoes } = await supabase
+        .from("grade_semanal_selecoes")
+        .select("vaga_horario_id")
+        .eq("aluno_id", aluno.id);
+
       for (const table of alunoDependentTables) {
         const { error } = await supabase.from(table).delete().eq("aluno_id", aluno.id);
         if (error) {
           console.error(`Failed to delete from ${table}:`, error.message);
+        }
+      }
+
+      // Restore vagas_disponiveis for deleted selections
+      if (selecoes && selecoes.length > 0) {
+        const vagaIds = [...new Set(selecoes.map((s: { vaga_horario_id: number }) => s.vaga_horario_id))];
+        for (const vagaId of vagaIds) {
+          const { data: vaga } = await supabase
+            .from("vagas_horarios")
+            .select("vagas_disponiveis, capacidade_max")
+            .eq("id", vagaId)
+            .single();
+          if (vaga && vaga.vagas_disponiveis < vaga.capacidade_max) {
+            await supabase
+              .from("vagas_horarios")
+              .update({ vagas_disponiveis: vaga.vagas_disponiveis + 1 })
+              .eq("id", vagaId);
+          }
         }
       }
 
