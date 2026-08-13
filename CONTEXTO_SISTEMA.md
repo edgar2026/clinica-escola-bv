@@ -1614,3 +1614,93 @@ A Edge Function de exclusão de usuário deve **restaurar vagas** ao deletar sel
 | Arquivo | Ação |
 |---------|------|
 | `supabase/functions/excluir-usuario/index.ts` | v4: restaura vagas ao deletar seleções |
+
+---
+
+## Sessão: Carga Horária Total, Semanas Previstas e Correção do Bug "0h"
+
+### Objetivo
+Implementar carga horária total editável pelo admin, calcular semanas previstas automaticamente, e corrigir o bug "0h" no Horário Firmado.
+
+### Alterações no banco de dados (via MCP supabase-clinica-escola)
+
+**1. Coluna `carga_horaria_total` adicionada em `alunos`**
+- Tipo: `INTEGER NOT NULL DEFAULT 40`
+- Representa a carga total do vínculo acadêmico (ex: 40h, 60h, 120h)
+- Editável pelo admin na Gestão de Usuários
+
+**2. Dados existentes atualizados**
+- Aluno 38: `carga_horaria_total = 40`, `data_inicio = '2026-08-01'`
+
+**3. RPC `atualizar_aluno_admin` atualizada**
+- Novos parâmetros: `p_carga_horaria_total` (integer, DEFAULT NULL) e `p_data_inicio` (date, DEFAULT NULL)
+- Sobrecarga antiga (8 parâmetros) removida
+- Sobrecarga nova (10 parâmetros) mantida
+
+**4. RPC `listar_usuarios_completos` atualizada**
+- Retorna `carga_horaria_total` e `data_inicio` para o frontend
+
+### Alterações no frontend
+
+**5. `src/types/index.ts`**
+- `AlunoDetalhes`: adicionados `carga_horaria_total` e `data_inicio`
+- `UsuarioComAluno`: adicionados `carga_horaria_total` e `data_inicio`
+
+**6. `src/services/adminService.ts`**
+- `atualizarAlunoAdmin`: aceita `carga_horaria_total` e `data_inicio`
+
+**7. `src/pages/aluno/AlunoDashboardPage.tsx` — Painel do Aluno**
+- Métricas: Carga Total, Carga Semanal Firmada, Semanas Previstas, Horas Realizadas, Horas Pendentes
+- Cálculo: `semanasNecessarias = Math.ceil(cargaHorariaTotal / categoriaCarga)`
+- Horas realizadas: soma de `tempo_total_minutos` para status `presenca_no_horario`, `atraso`, `saida_nao_registrada`, `falta_justificada`
+- Horas pendentes: `cargaHorariaTotal - horasCumpridas`
+- Barra de progresso baseada em `cargaHorariaTotal` (não mais `categoriaCarga`)
+
+**8. `src/pages/aluno/MeuHorarioFirmadoPage.tsx`**
+- Busca `carga_horaria_total` do aluno via query direta
+- Calcula `semanasNecessarias` = `cargaTotal / totalHoras`
+- Exibe: Carga Total, Semanal, Semanas Previstas, Total Horas Firmadas
+- Banner mostra "Carga completa: Xh de Yh por semana. Carga total do vínculo: Zh (N semanas previstas)."
+
+**9. `src/pages/admin/GestaoUsuariosPage.tsx`**
+- Formulário de edição inclui: Carga Horária Semanal, Carga Horária Total, Data Início Vigência
+- Passa os novos parâmetros para `atualizarAlunoAdmin`
+
+### Regras de negócio confirmadas
+
+1. **Carga total**: definida pelo admin, default 40h para novos alunos
+2. **Carga semanal**: definida pelo admin, default 4h para novos alunos
+3. **Semanas previstas**: `ceil(cargaTotal / cargaSemanal)` — ex: 40h ÷ 4h = 10 semanas
+4. **Divisão não inteira**: última semana com horas restantes (ex: 42h ÷ 4h = 10 semanas + 2h)
+5. **Horário firmado recorrente**: grade firmada uma vez, aplica-se a todas as semanas
+6. **Cálculo de horas**: minutos inteiros, sem precisão float
+7. **Contabilização**: registros validados, ocorrências aprovadas, ajustes justificados, reposições validadas
+8. **Não contabiliza**: pendente, reprovado, falta sem reposição, reposição agendada, saída sem aprovação
+9. **Feriados/faltas**: mantêm horas pendentes até complementação ou reposição
+10. **Alteração admin**: se carga semanal muda, reabre grade; se só total muda, recalcula semanas sem reabrir grade
+
+### Validações (via MCP)
+
+| # | Validação | Resultado |
+|---|-----------|-----------|
+| 1 | Carga total=40h, semanal=4h, data_inicio=2026-08-01 | **PASS** |
+| 2 | 40h ÷ 4h = 10 semanas | **PASS** |
+| 3 | 4 slots × 1h = 240min = 4h firmadas | **PASS** |
+| 4 | Grade recorrente (Seg/Qua/Qui/Sex 07-08 ou 08-09) | **PASS** |
+| 5 | Ocorrência aprovada contabilizada (falta_justificada, 1min) | **PASS** |
+| 6 | Horas realizadas=0h, pendentes=40h | **PASS** |
+
+### Build
+
+- `npx tsc --noEmit` — **PASS** (0 erros)
+- `npm run build` — **PASS** (10.14s, 1545 módulos)
+
+### Arquivos modificados
+
+| Arquivo | Ação |
+|---------|------|
+| `src/types/index.ts` | Adicionados `carga_horaria_total`, `data_inicio` |
+| `src/services/adminService.ts` | Novos parâmetros em `atualizarAlunoAdmin` |
+| `src/pages/aluno/AlunoDashboardPage.tsx` | Painel com total, semanal, semanas, realizadas, pendentes |
+| `src/pages/aluno/MeuHorarioFirmadoPage.tsx` | Exibe carga total, semanas previstas |
+| `src/pages/admin/GestaoUsuariosPage.tsx` | Edição de carga_total e data_inicio |

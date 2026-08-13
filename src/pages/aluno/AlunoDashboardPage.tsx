@@ -27,6 +27,7 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
       if (!alunoId) { setDashboard(null); return; }
 
       const categoriaCarga = Number(aluno?.carga_horaria_semanal_max) || Number(aluno?.categoria_carga) || 4;
+      const cargaHorariaTotal = Number(aluno?.carga_horaria_total) || 40;
 
       const { data: statusInscricao } = await supabase.rpc('verificar_inscricao_aberta', { p_aluno_id: Number(alunoId) });
       setInscricaoAberta(statusInscricao?.inscricao_aberta ?? false);
@@ -42,9 +43,12 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
       const statusHoje = !pontosHoje || pontosHoje.length === 0 ? 'nenhum_registro' : (temEntradaAberta ? 'em_andamento' : 'concluido');
 
       const minutosValidados = (todosPontos || [])
-        .filter(p => p.status_frequencia !== 'ausencia')
+        .filter(p => ['presenca_no_horario', 'atraso', 'saida_nao_registrada', 'falta_justificada'].includes(p.status_frequencia as string))
         .reduce((soma, p) => soma + (Number(p.tempo_total_minutos) || 0), 0);
-      const horasCumpridas = Math.round((minutosValidados / 60) * 10) / 10;
+      const horasCumpridas = Math.round(minutosValidados / 60);
+
+      const semanasNecessarias = categoriaCarga > 0 ? Math.ceil(cargaHorariaTotal / categoriaCarga) : 0;
+      const horasPendentes = Math.max(0, cargaHorariaTotal - horasCumpridas);
 
       const totalHorasFirmadas = gradeFirmada?.confirmado
         ? gradeFirmada.selecoes.reduce((soma, sel) => {
@@ -56,8 +60,10 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
 
       const metricas: Record<string, string | number> = {
         categoriaCarga,
+        cargaHorariaTotal,
         horasCumpridasTotal: horasCumpridas,
-        horasPendentes: Math.max(0, categoriaCarga - horasCumpridas),
+        horasPendentes,
+        semanasNecessarias,
         totalHorasFirmadas,
         atrasos: pontosHoje?.filter(p => p.status_frequencia === 'atraso').length || 0,
         faltas: pontosHoje?.filter(p => p.status_frequencia === 'ausencia').length || 0,
@@ -101,12 +107,14 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
   const aluno = dashboard?.aluno || null;
 
   const categoriaCarga = Number(metricas.categoriaCarga) || 6;
+  const cargaHorariaTotal = Number(metricas.cargaHorariaTotal) || 40;
   const horasCumpridas = Number(metricas.horasCumpridasTotal) || 0;
   const horasPendentes = Number(metricas.horasPendentes) || 0;
+  const semanasNecessarias = Number(metricas.semanasNecessarias) || 0;
   const totalHorasFirmadas = Number(metricas.totalHorasFirmadas) || 0;
   const atrasos = Number(metricas.atrasos) || 0;
   const faltas = Number(metricas.faltas) || 0;
-  const percHoras = categoriaCarga > 0 ? Math.min(100, (horasCumpridas / categoriaCarga) * 100) : 0;
+  const percHoras = cargaHorariaTotal > 0 ? Math.min(100, (horasCumpridas / cargaHorariaTotal) * 100) : 0;
 
   const firmado = gradeFirmada?.confirmado === true;
 
@@ -152,16 +160,17 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
       )}
 
       <div className="metrics-grid">
-        <MetricCard label={`Categoria ${categoriaCarga}h Semanais`} value={`${horasCumpridas}h cumpridas`} accent="accent-yellow">
+        <MetricCard label={`Carga Total: ${cargaHorariaTotal}h`} value={`${horasCumpridas}h realizadas`} accent="accent-yellow">
           <div className="progress-container">
             <div className="progress-bar" style={{ width: `${percHoras}%` }} />
           </div>
         </MetricCard>
-        <MetricCard label="Horas Cumpridas (registros validados)" value={`${horasCumpridas}h`} accent="accent-green" />
+        <MetricCard label="Carga Semanal Firmada" value={firmado ? `${totalHorasFirmadas}h / ${categoriaCarga}h` : 'Não firmado'} accent={firmado ? 'accent-green' : ''} />
+        <MetricCard label="Semanas Previstas" value={`${semanasNecessarias} semanas`} accent="accent-green" />
+        <MetricCard label="Horas Realizadas" value={`${horasCumpridas}h de ${cargaHorariaTotal}h`} accent="accent-green" />
         <MetricCard label="Horas Pendentes" value={`${horasPendentes}h`} accent="accent-yellow" />
-        <MetricCard label="Horário Firmado" value={firmado ? `${totalHorasFirmadas}h` : 'Não firmado'} accent={firmado ? 'accent-green' : ''} />
-        <MetricCard label="Atrasos Registrados" value={String(atrasos)} />
-        <MetricCard label="Faltas Não Justificadas" value={String(faltas)} accent="accent-red" />
+        <MetricCard label="Atrasos" value={String(atrasos)} />
+        <MetricCard label="Faltas" value={String(faltas)} accent="accent-red" />
       </div>
 
       <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>

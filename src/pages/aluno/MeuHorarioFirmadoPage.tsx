@@ -21,11 +21,20 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
   const [grade, setGrade] = useState<GradeFirmadaInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [inscricaoAberta, setInscricaoAberta] = useState<boolean>(false);
+  const [cargaTotal, setCargaTotal] = useState(40);
 
   const carregarHorariosFirmados = useCallback(async () => {
     setLoading(true);
     try {
       const alunoId = await getAlunoId();
+
+      const { data: alunoData } = await supabase.from('alunos')
+        .select('carga_horaria_total')
+        .eq('id', Number(alunoId))
+        .single();
+      if (alunoData?.carga_horaria_total) {
+        setCargaTotal(Number(alunoData.carga_horaria_total));
+      }
 
       const { data: gradeData, error: errGrade } = await supabase.rpc('obter_grade_aluno', {
         p_aluno_id: Number(alunoId),
@@ -47,13 +56,15 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
   useEffect(() => { carregarHorariosFirmados(); }, [carregarHorariosFirmados]);
 
   const firmado = grade?.confirmado === true;
-  const totalHoras = firmado
+  const totalMinutos = firmado
     ? grade.selecoes.reduce((s, sel) => {
         const [hI, mI] = sel.hora_inicio.split(':').map(Number);
         const [hF, mF] = sel.hora_fim.split(':').map(Number);
-        return s + (hF * 60 + mF - hI * 60 - mI) / 60;
+        return s + (hF * 60 + mF - (hI * 60 + mI));
       }, 0)
     : 0;
+  const totalHoras = Math.round(totalMinutos / 60);
+  const semanasNecessarias = cargaTotal > 0 && totalHoras > 0 ? Math.ceil(cargaTotal / totalHoras) : 0;
 
   const horasFirmadas = grade?.horas_firmadas_minutos ?? 0;
   const horasRascunho = grade?.horas_rascunho_minutos ?? 0;
@@ -102,6 +113,9 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           <div><strong>Aluno:</strong> {usuario?.nome || '-'}</div>
           <div><strong>Matrícula:</strong> {usuario?.matricula || '-'}</div>
           <div><strong>Curso:</strong> {usuario?.aluno?.curso_nome || '-'}</div>
+          <div><strong>Carga Total:</strong> {cargaTotal}h</div>
+          <div><strong>Semanal:</strong> {grade?.categoria_carga ?? 0}h firmadas</div>
+          {firmado && <div><strong>Semanas Previstas:</strong> {semanasNecessarias} semanas</div>}
           <div>
             <strong>Total Horas Firmadas:</strong>{' '}
             <span className={`badge-vaga ${firmado ? 'verde' : 'amarelo'}`}>
@@ -204,7 +218,8 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
               <Lock size={20} color="#065F46" style={{ flexShrink: 0 }} />
               <div>
                 <p style={{ margin: 0, color: '#065F46', fontWeight: 700, fontSize: '0.92rem' }}>
-                  Seu horário semanal já está firmado — Carga completa: {totalHoras}h de {grade?.categoria_carga ?? 0}h.
+                  Seu horário semanal já está firmado — Carga completa: {totalHoras}h de {grade?.categoria_carga ?? 0}h por semana.
+                  Carga total do vínculo: {cargaTotal}h ({semanasNecessarias} semanas previstas).
                 </p>
                 <p style={{ margin: '0.25rem 0 0', color: '#065F46', fontSize: '0.82rem' }}>
                   Vigência: {formatarDataFim(grade?.vigencia_inicio)} até {formatarDataFim(grade?.vigencia_fim)} — alterações somente pela administração.

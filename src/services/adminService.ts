@@ -762,6 +762,8 @@ export const adminService = {
 
   async atualizarAlunoAdmin(alunoId: number, dados: {
     carga_horaria_semanal?: number | null;
+    carga_horaria_total?: number | null;
+    data_inicio?: string | null;
     categoria_carga_id?: number | null;
     curso_id?: number | null;
     periodo_id?: number | null;
@@ -772,6 +774,8 @@ export const adminService = {
     const { data, error } = await supabase.rpc('atualizar_aluno_admin', {
       p_aluno_id: alunoId,
       p_carga_horaria_semanal: dados.carga_horaria_semanal ?? null,
+      p_carga_horaria_total: dados.carga_horaria_total ?? null,
+      p_data_inicio: dados.data_inicio ?? null,
       p_categoria_carga_id: dados.categoria_carga_id ?? null,
       p_curso_id: dados.curso_id ?? null,
       p_periodo_id: dados.periodo_id ?? null,

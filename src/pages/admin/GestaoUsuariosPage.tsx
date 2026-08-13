@@ -118,6 +118,8 @@ export const GestaoUsuariosPage = () => {
       endereco: u.endereco || '', data_nascimento: u.data_nascimento ? u.data_nascimento.split('T')[0] : '',
       curso_id: u.aluno_curso_id || u.curso_id || '',
       carga_horaria_semanal: u.carga_horaria_semanal || u.categoria_carga_horas || 4,
+      carga_horaria_total: u.carga_horaria_total || 40,
+      data_inicio: u.data_inicio || '',
       categoria_carga_id: u.categoria_carga_id || undefined,
       periodo_id: u.periodo_id || '',
       turno_id: u.turno_id || '',
@@ -137,6 +139,8 @@ export const GestaoUsuariosPage = () => {
       if (formEditar.aluno_id && formEditar.perfil === 'aluno') {
         const resAluno = await adminService.atualizarAlunoAdmin(Number(formEditar.aluno_id), {
           carga_horaria_semanal: formEditar.carga_horaria_semanal ? Number(formEditar.carga_horaria_semanal) : 4,
+          carga_horaria_total: formEditar.carga_horaria_total ? Number(formEditar.carga_horaria_total) : 40,
+          data_inicio: formEditar.data_inicio || null,
           curso_id: formEditar.aluno_curso_id ? Number(formEditar.aluno_curso_id) : (formEditar.curso_id ? Number(formEditar.curso_id) : null),
           periodo_id: formEditar.periodo_id ? Number(formEditar.periodo_id) : null,
           turno_id: formEditar.turno_id ? Number(formEditar.turno_id) : null,
@@ -525,7 +529,7 @@ export const GestaoUsuariosPage = () => {
                   <strong style={{ fontSize: '0.82rem', color: 'var(--primary)', marginTop: '0.3rem' }}>Dados Academicos</strong>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                     <div>
-                      <label style={labelStyle}>Carga Horária Semanal (Horas)</label>
+                      <label style={labelStyle}>Carga Horaria Semanal (Horas)</label>
                       <input
                         type="number"
                         min="1"
@@ -534,6 +538,28 @@ export const GestaoUsuariosPage = () => {
                         placeholder="ex: 4, 7 ou 12"
                         value={formEditar.carga_horaria_semanal ?? ''}
                         onChange={e => setFormEditar({ ...formEditar, carga_horaria_semanal: e.target.value ? Number(e.target.value) : undefined })}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Carga Horaria Total (Horas)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="500"
+                        step="1"
+                        placeholder="ex: 40, 60, 120"
+                        value={formEditar.carga_horaria_total ?? 40}
+                        onChange={e => setFormEditar({ ...formEditar, carga_horaria_total: e.target.value ? Number(e.target.value) : 40 })}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Data Inicio Vigencia</label>
+                      <input
+                        type="date"
+                        value={formEditar.data_inicio || ''}
+                        onChange={e => setFormEditar({ ...formEditar, data_inicio: e.target.value })}
                         style={inputStyle}
                       />
                     </div>

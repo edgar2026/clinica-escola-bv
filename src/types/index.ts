@@ -45,6 +45,9 @@ export interface AlunoDetalhes {
   categoria_carga: number;
   categoria_carga_id?: number;
   carga_horaria_semanal_max: number;
+  carga_horaria_total: number;
+  data_inicio?: string | null;
+  data_termino?: string | null;
   situacao: string;
   curso_nome?: string;
   periodo_nome?: string;
@@ -398,6 +401,8 @@ export interface CategoriaCargaHoraria {
 export interface UsuarioComAluno extends Usuario {
   aluno_id?: number;
   carga_horaria_semanal?: number;
+  carga_horaria_total?: number;
+  data_inicio?: string | null;
   categoria_carga_id?: number;
   categoria_carga_horas?: number;
   periodo_id?: string;
