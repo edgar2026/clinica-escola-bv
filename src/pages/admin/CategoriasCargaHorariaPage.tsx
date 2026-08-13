@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { adminService } from '../../services/adminService';
 import { Plus, Trash2, Edit2, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
-import { ConfirmModal } from '../../components/common/ConfirmModal';
 import type { CategoriaCargaHoraria } from '../../types';
 
 const INPUT_STYLE: React.CSSProperties = {

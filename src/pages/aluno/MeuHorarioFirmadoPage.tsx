@@ -1,61 +1,74 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Printer, Mail, Trash2, Calendar, RefreshCw } from 'lucide-react';
-import { ConfirmModal } from '../../components/common/ConfirmModal';
-import { formatarData } from '../../utils/datas';
-import { agendamentoService } from '../../services/agendamentoService';
+import { Printer, Calendar, RefreshCw, Lock } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { getAlunoId } from '../../services/helpers';
-import type { Agendamento } from '../../types';
+import type { GradeFirmadaInfo } from '../../types';
 
-const DIAS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const DIAS_SEMANA: Record<number, string> = {
+  1: 'Segunda',
+  2: 'Terça',
+  3: 'Quarta',
+  4: 'Quinta',
+  5: 'Sexta',
+  6: 'Sábado',
+};
 
-export const MeuHorarioFirmadoPage = ({ setActiveTab: _setActiveTab }: { setActiveTab: (tab: string) => void }) => {
+export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const { usuario, showToast } = useAuth();
-  const [horarios, setHorarios] = useState<Agendamento[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [cargaMax, setCargaMax] = useState(6);
-  const [cancelarId, setCancelarId] = useState<string | null>(null);
+  const [grade, setGrade] = useState<GradeFirmadaInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [inscricaoAberta, setInscricaoAberta] = useState<boolean>(false);
 
   const carregarHorariosFirmados = useCallback(async () => {
     setLoading(true);
     try {
       const alunoId = await getAlunoId();
-      const { data: aluno } = await supabase.from('alunos').select('carga_horaria_semanal_max, categoria_carga').eq('id', alunoId).single();
-      const cMax = Number(aluno?.carga_horaria_semanal_max) || Number(aluno?.categoria_carga) || 4;
-      setCargaMax(cMax);
 
-      const res = await agendamentoService.getMeuHorarioFirmado();
-      if (res) {
-        if (res.horariosFirmados) setHorarios(res.horariosFirmados);
-      }
-    } catch {
-      setHorarios([]);
+      const { data: gradeData, error: errGrade } = await supabase.rpc('obter_grade_aluno', {
+        p_aluno_id: Number(alunoId),
+      });
+      if (errGrade) throw errGrade;
+      setGrade(gradeData as GradeFirmadaInfo);
+
+      const { data: statusInscricao } = await supabase.rpc('verificar_inscricao_aberta', {
+        p_aluno_id: Number(alunoId),
+      });
+      setInscricaoAberta(statusInscricao?.inscricao_aberta ?? false);
+    } catch (err) {
+      showToast('Erro ao carregar horário firmado: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     carregarHorariosFirmados();
   }, [carregarHorariosFirmados]);
 
-  const totalHoras = horarios.reduce((s, h) => s + (h.horas_computadas || 1), 0);
-
-  const handleConfirmarCancelamento = async () => {
-    if (!cancelarId) return;
-    try {
-      await agendamentoService.cancelarAgendamento(cancelarId);
-      showToast('Presença cancelada com sucesso.', 'sucesso');
-      await carregarHorariosFirmados();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erro ao cancelar presença.', 'erro');
-    } finally {
-      setCancelarId(null);
-    }
-  };
+  const firmado = grade?.confirmado === true;
+  const totalHoras = firmado
+    ? grade.selecoes.reduce((s, sel) => {
+        const [hI, mI] = sel.hora_inicio.split(':').map(Number);
+        const [hF, mF] = sel.hora_fim.split(':').map(Number);
+        return s + (hF * 60 + mF - hI * 60 - mI) / 60;
+      }, 0)
+    : 0;
 
   const hojeStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+
+  const formatarDataFim = (d?: string | null) => {
+    if (!d) return '-';
+    return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  };
+
+  if (loading) {
+    return (
+      <section>
+        <div style={{ padding: '4rem', textAlign: 'center', color: '#94A3B8' }}>Carregando horário firmado...</div>
+      </section>
+    );
+  }
 
   return (
     <section>
@@ -72,12 +85,11 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab: _setActiveTab }: { setActi
             <button onClick={carregarHorariosFirmados} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <RefreshCw size={15} className={loading ? 'spin' : ''} /> Atualizar
             </button>
-            <button onClick={() => window.print()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Printer size={16} /> Imprimir / PDF
-            </button>
-            <button onClick={() => showToast('Comprovante enviado por e-mail com sucesso!', 'sucesso')} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Mail size={16} /> Enviar por E-mail
-            </button>
+            {firmado && (
+              <button onClick={() => window.print()} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Printer size={16} /> Imprimir / PDF
+              </button>
+            )}
           </div>
         </div>
 
@@ -87,67 +99,89 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab: _setActiveTab }: { setActi
           <div><strong>Curso:</strong> {usuario?.aluno?.curso_nome || '-'}</div>
           <div>
             <strong>Total Horas Firmadas:</strong>{' '}
-            <span className={`badge-vaga ${totalHoras > cargaMax ? 'vermelho' : 'verde'}`}>
-              {totalHoras}h / {cargaMax}h por semana
+            <span className={`badge-vaga ${firmado ? 'verde' : 'amarelo'}`}>
+              {firmado ? `${totalHoras}h / ${grade?.categoria_carga ?? 0}h por semana` : 'Não firmado'}
             </span>
           </div>
         </div>
 
-        {horarios.length === 0 ? (
+        {!firmado ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', background: '#F8FAFC', borderRadius: 8, color: 'var(--text-muted)' }}>
             <Calendar size={36} color="var(--primary)" style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
-            <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Você ainda não possui presenças confirmadas para esta semana.</p>
-            <p style={{ margin: 0, fontSize: '0.85rem' }}>Acesse a aba <strong>"Reservar Vaga no Calendário"</strong> para escolher seus horários de prática na Clínica-Escola.</p>
+            <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Você ainda não firmou seu horário semanal.</p>
+            <p style={{ margin: '0 0 1.25rem', fontSize: '0.85rem' }}>
+              Seu horário só aparece aqui depois que você confirmar a Grade Semanal com a carga completa.
+            </p>
+            {inscricaoAberta ? (
+              <button onClick={() => setActiveTab('grade-semanal-aluno')} className="btn-primary">
+                Escolher Horários na Grade
+              </button>
+            ) : (
+              <p style={{ margin: 0, fontSize: '0.82rem' }}>
+                O período de inscrição está fechado. Contate a administração em caso de dúvidas.
+              </p>
+            )}
           </div>
         ) : (
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Dia</th>
-                  <th>Horário</th>
-                  <th>Clínica / Setor</th>
-                  <th>Professor Responsável</th>
-                  <th>Situação</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {horarios.sort((a, b) => (a.data || '').localeCompare(b.data || '')).map(h => {
-                  const diaIdx = h.dia_semana ? h.dia_semana : (h.data ? new Date(h.data + 'T12:00:00').getDay() : 0);
-                  return (
-                    <tr key={h.agendamento_id || h.id}>
-                      <td><strong>{formatarData(h.data)}</strong></td>
-                      <td>{DIAS_PT[diaIdx] || 'Dia'}</td>
-                      <td>{h.hora_inicio} – {h.hora_fim}</td>
-                      <td>{h.setor_nome || 'Clínica-Escola'}</td>
-                      <td>{h.supervisor_nome || 'Supervisor'}</td>
-                      <td><span className="badge-vaga verde">Confirmado ({h.horas_computadas || 1}h)</span></td>
-                      <td>
-                        <button onClick={() => setCancelarId(h.agendamento_id || h.id)} className="btn-logout" style={{ padding: '0.3rem 0.6rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Trash2 size={14} /> Cancelar
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div style={{
+              background: '#D1FAE5',
+              border: '1px solid #10B981',
+              borderRadius: 12,
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              marginBottom: '1.5rem',
+            }}>
+              <Lock size={20} color="#065F46" style={{ flexShrink: 0 }} />
+              <div>
+                <p style={{ margin: 0, color: '#065F46', fontWeight: 700, fontSize: '0.92rem' }}>
+                  Seu horário semanal já está firmado.
+                </p>
+                <p style={{ margin: '0.25rem 0 0', color: '#065F46', fontSize: '0.82rem' }}>
+                  Vigência: {formatarDataFim(grade?.vigencia_inicio)} até {formatarDataFim(grade?.vigencia_fim)} — alterações somente pela administração.
+                  {grade?.confirmado_em ? ` Firmado em ${new Date(grade.confirmado_em).toLocaleString('pt-BR')}.` : ''}
+                </p>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dia da Semana</th>
+                    <th>Horário</th>
+                    <th>Clínica / Setor</th>
+                    <th>Situação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...grade.selecoes]
+                    .sort((a, b) => a.dia_semana - b.dia_semana || a.hora_inicio.localeCompare(b.hora_inicio))
+                    .map(sel => (
+                      <tr key={sel.vaga_horario_id}>
+                        <td><strong>{DIAS_SEMANA[sel.dia_semana] || `Dia ${sel.dia_semana}`}</strong></td>
+                        <td>{sel.hora_inicio} – {sel.hora_fim}</td>
+                        <td>{sel.setor_nome || 'Clínica-Escola'}</td>
+                        <td><span className="badge-vaga verde">Firmado</span></td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <button onClick={() => setActiveTab('registro-ponto')} className="btn-primary">
+                Registrar Presença
+              </button>
+              <button onClick={() => setActiveTab('espelho-ponto')} className="btn-secondary">
+                Histórico de Registros
+              </button>
+            </div>
+          </>
         )}
       </div>
-
-      <ConfirmModal
-        isOpen={!!cancelarId}
-        title="Cancelar Horário Agendado"
-        message="Tem certeza que deseja cancelar esta vaga reservada na Clínica-Escola? O horário será liberado para outros alunos."
-        confirmText="Sim, Cancelar Vaga"
-        cancelText="Manter Vaga"
-        confirmVariant="danger"
-        onConfirm={handleConfirmarCancelamento}
-        onCancel={() => setCancelarId(null)}
-      />
     </section>
   );
 };

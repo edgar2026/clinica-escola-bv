@@ -1,8 +1,14 @@
 import { supabase } from './supabaseClient';
-import type { DashboardData, RelatorioData, Ponto } from '../types';
+import type { DashboardData, RelatorioData, Ponto, MonitorPresencas } from '../types';
 
 
 export const gerenciaService = {
+  async getMonitorPresencas(): Promise<MonitorPresencas> {
+    const { data, error } = await supabase.rpc('monitor_presencas');
+    if (error) throw error;
+    return data as MonitorPresencas;
+  },
+
   async getDashboardData(): Promise<DashboardData> {
     const { data: alunos } = await supabase.from('alunos').select('*');
     const hoje = new Date().toISOString().split('T')[0];

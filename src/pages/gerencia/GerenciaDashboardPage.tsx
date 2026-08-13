@@ -1,28 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { MetricCard } from '../../components/common/MetricCard';
-import { Users, FileText, RefreshCw, CheckCircle, XCircle, Edit3 } from 'lucide-react';
+import { Users, FileText, RefreshCw, CheckCircle, XCircle, Edit3, CalendarClock } from 'lucide-react';
 import { formatarData } from '../../utils/datas';
 import { gerenciaService } from '../../services/gerenciaService';
 import { pontoService } from '../../services/pontoService';
-import type { Ponto } from '../../types';
+import type { Ponto, MonitorAluno, MonitorPresencas } from '../../types';
+
+const DIAS_PT: Record<number, string> = {
+  1: 'Segunda',
+  2: 'Terça',
+  3: 'Quarta',
+  4: 'Quinta',
+  5: 'Sexta',
+  6: 'Sábado',
+};
+
+const formatarHorariosFirmados = (monitor: MonitorAluno): string => {
+  if (!monitor.grade_confirmada || !monitor.horarios_firmados) return '—';
+  return monitor.horarios_firmados
+    .split(', ')
+    .map(h => {
+      const m = h.match(/^dia (\d) (\d{2}:\d{2})-(\d{2}:\d{2})$/);
+      if (!m) return h;
+      return `${DIAS_PT[Number(m[1])] || m[1]} ${m[2]}–${m[3]}`;
+    })
+    .join(' · ');
+};
 
 export const GerenciaDashboardPage = () => {
   const { showToast } = useAuth();
-  const [metricas, setMetricas] = useState({
-    totalAlunosCadastrados: 0,
-    alunosPresentesAgora: 0,
-    alunosAtrasadosHoje: 0,
-    justificativasPendentes: 0,
-    slotsComVagas: 0
-  });
-  const [presentes, setPresentes] = useState<Ponto[]>([]);
-  const [, setJustificativas] = useState<Ponto[]>([]);
+  const [monitor, setMonitor] = useState<MonitorPresencas | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const [modalItem, setModalItem] = useState<Ponto | null>(null);
-  const [parecer, setParecer] = useState('');
-
   const [solicitacoes, setSolicitacoes] = useState<Ponto[]>([]);
   const [modalSolicitacao, setModalSolicitacao] = useState<Ponto | null>(null);
   const [acaoSolicitacao, setAcaoSolicitacao] = useState<'aprovar' | 'corrigir' | 'rejeitar'>('aprovar');
@@ -33,49 +42,22 @@ export const GerenciaDashboardPage = () => {
   const carregarDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await gerenciaService.getDashboardData();
-      if (res) {
-        setMetricas({
-          totalAlunosCadastrados: Number(res.metricas?.totalAlunosCadastrados) || 0,
-          alunosPresentesAgora: Number(res.metricas?.alunosPresentesAgora) || 0,
-          alunosAtrasadosHoje: Number(res.metricas?.alunosAtrasadosHoje) || 0,
-          justificativasPendentes: Number(res.metricas?.justificativasPendentes) || 0,
-          slotsComVagas: Number(res.metricas?.slotsComVagas) || 0,
-        });
-        setPresentes(Array.isArray(res.presentesNoMomento) ? res.presentesNoMomento : []);
-        setJustificativas(Array.isArray(res.pendenciasForaHorario) ? res.pendenciasForaHorario : []);
-      }
+      const res = await gerenciaService.getMonitorPresencas();
+      setMonitor(res);
 
       const sols = await pontoService.getSolicitacoesPendentes().catch(() => []);
       setSolicitacoes(sols);
     } catch (err) {
       console.error('Erro ao carregar dashboard gerencial:', err);
+      showToast('Erro ao carregar o monitor: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     carregarDashboard();
   }, [carregarDashboard]);
-
-  const handleDecidirJustificativa = async (acao: 'aprovar' | 'rejeitar') => {
-    if (!parecer || parecer.length < 5) {
-      showToast('Insira um parecer/justificativa administrativa (mínimo 5 caracteres).', 'erro');
-      return;
-    }
-
-    try {
-      await gerenciaService.validarForaHorario(modalItem?.ponto_id || modalItem?.id || '', acao, parecer);
-      showToast(`Solicitação ${acao === 'aprovar' ? 'aprovada' : 'indeferida'} com sucesso!`, 'sucesso');
-      await carregarDashboard();
-    } catch (err) {
-      showToast('Erro ao processar decisão: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
-    } finally {
-      setModalItem(null);
-      setParecer('');
-    }
-  };
 
   const handleProcessarSolicitacao = async () => {
     if (!modalSolicitacao) return;
@@ -120,7 +102,7 @@ export const GerenciaDashboardPage = () => {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="page-title">Painel Gerencial — Monitoramento & Validações</h1>
-          <p className="page-subtitle">Acompanhe alunos presentes na clinica em tempo real e analise atestados para autorizacao de horarios.</p>
+          <p className="page-subtitle">Dados reais persistidos: usuário, aluno, carga semanal, horários firmados e registros de presença.</p>
         </div>
         <button onClick={carregarDashboard} disabled={loading} className="btn-secondary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
           <RefreshCw size={14} className={loading ? 'spin' : ''} /> Atualizar Painel
@@ -132,15 +114,37 @@ export const GerenciaDashboardPage = () => {
       ) : (
         <>
           <div className="metrics-grid">
-            <MetricCard label="Alunos Cadastrados"      value={metricas.totalAlunosCadastrados} />
-            <MetricCard label="Presentes no Momento"    value={presentes.length}                  accent="accent-green"  />
-            <MetricCard label="Atrasados Hoje"           value={metricas.alunosAtrasadosHoje}    accent="accent-yellow" />
-            <MetricCard label="Solicitações Pendentes"   value={solicitacoes.length}              accent="accent-red" />
-            <MetricCard label="Slots com Vagas"          value={metricas.slotsComVagas}           accent="accent-green"  />
+            <MetricCard label="Alunos Cadastrados" value={monitor?.metricas.total_alunos ?? 0} />
+            <MetricCard label="Presentes no Momento" value={monitor?.metricas.presentes_agora ?? 0} accent="accent-green" />
+            <MetricCard label="Atrasados Hoje" value={monitor?.metricas.atrasados_hoje ?? 0} accent="accent-yellow" />
+            <MetricCard label="Grades Confirmadas" value={monitor?.metricas.grades_confirmadas ?? 0} accent="accent-green" />
+            <MetricCard label="Solicitações Pendentes" value={solicitacoes.length} accent="accent-red" />
+            <MetricCard label="Slots com Vagas" value={monitor?.metricas.slots_com_vagas ?? 0} accent="accent-green" />
           </div>
 
+          {monitor?.config?.id && (
+            <div style={{
+              background: '#F0F9FF',
+              border: '1px solid #BAE6FD',
+              borderRadius: 10,
+              padding: '0.65rem 1rem',
+              marginBottom: '1.5rem',
+              fontSize: '0.85rem',
+              color: '#075985',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+            }}>
+              <CalendarClock size={16} />
+              <strong>Vigência ativa:</strong>
+              <span>{new Date(monitor.config.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR')} – {new Date(monitor.config.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+              <span className="badge-vaga verde" style={{ marginLeft: 4 }}>config #{monitor.config.id}</span>
+            </div>
+          )}
+
           <h3 style={{ color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Users size={20} /> 🟢 Alunos Fisicamente Presentes Agora
+            <Users size={20} /> Alunos — Carga Semanal, Horário Firmado e Presenças
           </h3>
           <div className="table-container" style={{ marginBottom: '2rem' }}>
             <table>
@@ -148,24 +152,50 @@ export const GerenciaDashboardPage = () => {
                 <tr>
                   <th>Aluno (Matrícula)</th>
                   <th>Curso</th>
-                  <th>Setor / Clínica</th>
-                  <th>Horário Entrada</th>
-                  <th>Status Frequência</th>
+                  <th>Carga Semanal</th>
+                  <th>Horário Firmado</th>
+                  <th>Vigência</th>
+                  <th>Presenças</th>
+                  <th>Situação Hoje</th>
                 </tr>
               </thead>
               <tbody>
-                {presentes.length === 0 ? (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>Nenhum aluno presente no momento.</td></tr>
-                ) : presentes.map(p => (
-                  <tr key={p.ponto_id || p.id}>
-                    <td><strong>{p.aluno_nome}</strong> ({p.matricula})</td>
-                    <td>{p.curso_nome}</td>
-                    <td>{p.setor_nome}</td>
-                    <td><span className="badge-vaga verde">Entrada: {p.hora_entrada}</span></td>
+                {!monitor || monitor.alunos.length === 0 ? (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>Nenhum aluno cadastrado.</td></tr>
+                ) : monitor.alunos.map(a => (
+                  <tr key={a.aluno_id}>
+                    <td><strong>{a.nome}</strong> ({a.matricula})</td>
+                    <td>{a.curso_nome || '-'}</td>
+                    <td><span className="badge-vaga verde">{a.carga_horaria_semanal}h semanais</span></td>
                     <td>
-                      <span className={`badge-vaga ${p.status_frequencia === 'atraso' ? 'amarelo' : 'verde'}`}>
-                        {p.status_frequencia === 'atraso' ? '⚠️ Atraso' : '✅ No Horário'}
-                      </span>
+                      {a.grade_confirmada ? (
+                        <span style={{ fontSize: '0.8rem', color: '#065F46', fontWeight: 600 }}>
+                          {formatarHorariosFirmados(a)}
+                        </span>
+                      ) : (
+                        <span className="badge-vaga amarelo" style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FDBA74' }}>
+                          Não firmado
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '0.82rem' }}>
+                      {a.grade_confirmada && a.vigencia_inicio
+                        ? `${new Date(a.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR')} – ${a.vigencia_fim ? new Date(a.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}`
+                        : '-'}
+                    </td>
+                    <td style={{ fontSize: '0.82rem' }}>
+                      {a.total_presencas > 0
+                        ? `${a.total_presencas} registro(s) · ${a.horas_cumpridas}h cumpridas`
+                        : 'Nenhum registro'}
+                    </td>
+                    <td>
+                      {a.presente_agora ? (
+                        <span className="badge-vaga verde">🟢 No local</span>
+                      ) : a.atrasos_hoje > 0 ? (
+                        <span className="badge-vaga amarelo">⚠️ Atraso</span>
+                      ) : (
+                        <span className="badge-vaga" style={{ background: '#F1F5F9', color: '#475569' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -213,46 +243,6 @@ export const GerenciaDashboardPage = () => {
             </table>
           </div>
         </>
-      )}
-
-      {modalItem && (
-        <div className="modal-overlay">
-          <div className="modal-card">
-            <div className="modal-header">
-              <h3 style={{ color: 'var(--primary)' }}>Análise de Atestado & Autorização de Alteração de Horário</h3>
-              <button onClick={() => { setModalItem(null); setParecer(''); }} className="btn-close">&times;</button>
-            </div>
-            
-            <div style={{ background: '#F8FAFC', padding: '1rem', borderRadius: 8, fontSize: '0.88rem', marginBottom: '1.25rem' }}>
-              <p style={{ margin: '0 0 4px' }}>Aluno: <strong>{modalItem.aluno_nome}</strong> ({modalItem.matricula})</p>
-              <p style={{ margin: '0 0 4px' }}>Data da ocorrência: <strong>{formatarData(modalItem.data_falta || modalItem.data || '')}</strong> ({modalItem.tipo || modalItem.motivo})</p>
-              <p style={{ margin: '0 0 4px' }}>Justificativa: <em>"{modalItem.justificativa || modalItem.descricao}"</em></p>
-              {modalItem.anexo_nome && <p style={{ margin: 0 }}>Arquivo comprovante: <strong>{modalItem.anexo_nome}</strong></p>}
-            </div>
-
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                Parecer Administrativo / Decisão:
-              </label>
-              <textarea
-                rows={3}
-                value={parecer}
-                onChange={e => setParecer(e.target.value)}
-                placeholder="Ex: Atestado médico válido apresentado. Deferido com autorização de novo registro para reposição de carga horária."
-                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}
-              />
-            </div>
-            
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => handleDecidirJustificativa('rejeitar')} className="btn-logout" style={{ background: 'var(--status-red)', color: '#FFF' }}>
-                Indeferir Pedido
-              </button>
-              <button onClick={() => handleDecidirJustificativa('aprovar')} className="btn-primary" style={{ background: 'var(--status-green)' }}>
-                Aprovar & Liberar Alteração
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {modalSolicitacao && (

@@ -272,7 +272,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
   };
 
   const handleConfirmarGrade = async () => {
-    if (!podeConfirmar || !alunoId || !configId) return;
+    if (!podeConfirmar || !alunoId || !configId || saving) return;
     setSaving(true);
     try {
       const { data, error } = await supabase.rpc('confirmar_grade', {
@@ -283,8 +283,9 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       if (error) throw error;
 
       const resultado = data;
-      if (resultado && !resultado.sucesso) {
-        showToast(resultado.mensagem || 'Erro ao confirmar grade', 'erro');
+      if (!resultado || !resultado.sucesso) {
+        showToast(resultado?.mensagem || 'Não foi possível firmar o horário. Tente novamente.', 'erro');
+        await carregarDados();
         return;
       }
 
@@ -293,6 +294,7 @@ export const GradeSemanalAlunoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       await carregarDados();
     } catch (err) {
       showToast('Erro ao confirmar grade: ' + (err instanceof Error ? err.message : ''), 'erro');
+      setConfirmModalOpen(false);
     } finally {
       setSaving(false);
     }

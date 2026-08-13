@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Eye, Edit3, Ban, CheckCircle, Search, Trash2, KeyRound, AlertCircle, Clock, Calendar } from 'lucide-react';
 import { adminService } from '../../services/adminService';
-import type { Usuario, OpcoesCadastro, Perfil, SolicitacaoResetSenha, CategoriaCargaHoraria, UsuarioComAluno } from '../../types';
+import type { OpcoesCadastro, Perfil, SolicitacaoResetSenha, CategoriaCargaHoraria, UsuarioComAluno } from '../../types';
 
 const PERFIL_LABELS: Record<string, string> = { admin: 'Administrador', gerencia: 'Gerencia', aluno: 'Aluno' };
 const STATUS_COLORS: Record<string, string> = { ativo: '#10B981', inativo: '#6B7280', suspenso: '#F59E0B' };
@@ -30,7 +30,7 @@ export const GestaoUsuariosPage = () => {
   const [salvando, setSalvando] = useState(false);
 
   const [opcoes, setOpcoes] = useState<OpcoesCadastro>({ cursos: [], periodos: [], turnos: [] });
-  const [categoriasCarga, setCategoriasCarga] = useState<CategoriaCargaHoraria[]>([]);
+  const [, setCategoriasCarga] = useState<CategoriaCargaHoraria[]>([]);
   const [setoresClinica, setSetoresClinica] = useState<Array<{ id: number; nome: string }>>([]);
 
   const [modalExcluirOpen, setModalExcluirOpen] = useState(false);
@@ -550,7 +550,7 @@ export const GestaoUsuariosPage = () => {
                       </select>
                     </div>
                     <div><label style={labelStyle}>Clinica / Setor</label>
-                      <select value={formEditar.setor_id || ''} onChange={e => setFormEditar({ ...formEditar, setor_id: e.target.value ? Number(e.target.value) : undefined })} style={{ ...inputStyle, background: '#FFF' }}>
+                      <select value={formEditar.setor_id || ''} onChange={e => setFormEditar({ ...formEditar, setor_id: e.target.value || undefined })} style={{ ...inputStyle, background: '#FFF' }}>
                         <option value="">Selecione...</option>
                         {setoresClinica.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
                       </select>
@@ -598,8 +598,8 @@ export const GestaoUsuariosPage = () => {
               <div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem', background: 'var(--bg-main)', padding: '1rem', borderRadius: 8, fontSize: '0.85rem' }}>
                   <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Status</span><strong style={{ color: gradeAluno.confirmado ? '#10B981' : '#F59E0B' }}>{gradeAluno.confirmado ? 'Confirmado' : 'Pendente'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Categoria</span><strong>{gradeAluno.categoria_carga || '-'}h semanais</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Total Selecionado</span><strong>{gradeAluno.total_horas || 0}h</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Categoria</span><strong>{String(gradeAluno.categoria_carga ?? '-')}h semanais</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Total Selecionado</span><strong>{String(gradeAluno.total_horas ?? 0)}h</strong></div>
                   <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Vigencia</span><strong>{gradeAluno.vigencia_inicio ? new Date(gradeAluno.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} - {gradeAluno.vigencia_fim ? new Date(gradeAluno.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</strong></div>
                 </div>
 

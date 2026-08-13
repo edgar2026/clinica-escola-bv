@@ -411,3 +411,80 @@ export interface LoginPageProps {
   onCadastro?: () => void;
   onRedefinirSenha?: () => void;
 }
+
+export interface SelecaoGradeFirmada {
+  id: number;
+  vaga_horario_id: number;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fim: string;
+  confirmado: boolean;
+  confirmado_em?: string | null;
+  setor_nome?: string | null;
+  setor_id?: number | null;
+  vagas_disponiveis?: number;
+}
+
+export interface GradeFirmadaInfo {
+  sucesso: boolean;
+  tem_grade: boolean;
+  confirmado: boolean;
+  confirmado_em?: string | null;
+  selecoes: SelecaoGradeFirmada[];
+  config_id: number | null;
+  inscricao_inicio?: string | null;
+  inscricao_fim?: string | null;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
+  config_status?: string | null;
+  categoria_carga: number;
+  campos_pendentes?: string[];
+  pode_exibir_grade?: boolean;
+}
+
+export interface MonitorAluno {
+  aluno_id: number;
+  usuario_id: number;
+  nome: string;
+  matricula: string;
+  email: string;
+  curso_nome: string | null;
+  periodo_nome: string | null;
+  turno_nome: string | null;
+  setor_nome: string | null;
+  carga_horaria_semanal: number;
+  categoria_carga_horas: number | null;
+  situacao: string;
+  grade_confirmada: boolean;
+  confirmado_em: string | null;
+  horarios_firmados: string | null;
+  config_id: number | null;
+  vigencia_inicio: string | null;
+  vigencia_fim: string | null;
+  config_status: string | null;
+  total_presencas: number;
+  horas_cumpridas: number;
+  ultima_presenca_data: string | null;
+  presencas_hoje: number;
+  presente_agora: boolean;
+  atrasos_hoje: number;
+}
+
+export interface MonitorPresencas {
+  metricas: {
+    total_alunos: number;
+    alunos_ativos: number;
+    presentes_agora: number;
+    atrasados_hoje: number;
+    solicitacoes_pendentes: number;
+    slots_com_vagas: number;
+    grades_confirmadas: number;
+  };
+  alunos: MonitorAluno[];
+  config: {
+    id: number | null;
+    vigencia_inicio: string | null;
+    vigencia_fim: string | null;
+    status: string | null;
+  };
+}

@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { Usuario, OpcoesCadastro, Curso, Periodo, Turno, Clinica, Setor, Especialidade, Professor, Supervisor, Vinculo, Unidade, HorarioFuncionamento, VagaHorario, Feriado, Regra, Configuracao, AuditoriaLog, CategoriaCargaHoraria } from '../types';
+import type { Usuario, OpcoesCadastro, Curso, Periodo, Turno, Clinica, Setor, Especialidade, Professor, Supervisor, Vinculo, Unidade, HorarioFuncionamento, VagaHorario, Feriado, Regra, Configuracao, AuditoriaLog, CategoriaCargaHoraria, UsuarioComAluno } from '../types';
 
 
 export const adminService = {

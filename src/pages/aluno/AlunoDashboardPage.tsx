@@ -1,109 +1,153 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { MetricCard } from '../../components/common/MetricCard';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar } from 'lucide-react';
+import { Calendar, Lock, RefreshCw } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
-import type { Usuario } from '../../types';
+import type { Usuario, GradeFirmadaInfo } from '../../types';
 
 export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const { usuario } = useAuth();
   const [dashboard, setDashboard] = useState<{
     metricas: Record<string, string | number>;
-    proximoAgendamento: any | null;
     aluno: any | null;
     usuario: Usuario | null;
-    mensagem?: string;
   } | null>(null);
+  const [gradeFirmada, setGradeFirmada] = useState<GradeFirmadaInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [inscricaoAberta, setInscricaoAberta] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      if (!usuario?.id) { setLoading(false); return; }
-      try {
-        const userId = usuario.id;
+  const carregarDados = useCallback(async () => {
+    if (!usuario?.id) { setLoading(false); return; }
+    setLoading(true);
+    try {
+      const userId = usuario.id;
 
-        const { data: aluno } = await supabase.from('alunos').select('*, cursos(nome), periodos(nome, codigo), turnos(nome, codigo), setores_clinica(nome)').eq('usuario_id', userId).single() as { data: Record<string, unknown> | null };
-        const alunoId = aluno?.id;
-        if (!alunoId) { setDashboard(null); return; }
+      const { data: aluno } = await supabase.from('alunos').select('*, cursos(nome), periodos(nome, codigo), turnos(nome, codigo), setores_clinica(nome)').eq('usuario_id', userId).single() as { data: Record<string, unknown> | null };
+      const alunoId = aluno?.id;
+      if (!alunoId) { setDashboard(null); return; }
 
-        const categoriaCarga = Number(aluno?.carga_horaria_semanal_max) || Number(aluno?.categoria_carga) || 4;
+      const categoriaCarga = Number(aluno?.carga_horaria_semanal_max) || Number(aluno?.categoria_carga) || 4;
 
-        const { data: statusInscricao } = await supabase.rpc('verificar_inscricao_aberta', { p_aluno_id: Number(alunoId) });
-        setInscricaoAberta(statusInscricao?.inscricao_aberta ?? false);
+      const { data: statusInscricao } = await supabase.rpc('verificar_inscricao_aberta', { p_aluno_id: Number(alunoId) });
+      setInscricaoAberta(statusInscricao?.inscricao_aberta ?? false);
 
-        const hoje = new Date().toISOString().split('T')[0];
-        const { data: pontosHoje } = await supabase.from('pontos').select('*').eq('aluno_id', alunoId).gte('data', hoje) as { data: Record<string, unknown>[] | null };
-        const { data: agendamento } = await supabase.from('agendamentos').select('*, horarios(*, setores(*, clinicas(*)), vagas_horarios(*)').eq('aluno_id', alunoId).gte('data', hoje).order('data', { ascending: true }).limit(1) as { data: Record<string, unknown>[] | null };
+      const { data: gradeData } = await supabase.rpc('obter_grade_aluno', { p_aluno_id: Number(alunoId) });
+      setGradeFirmada((gradeData as GradeFirmadaInfo | null) ?? null);
 
-        const temEntradaAberta = pontosHoje?.some(p => !p.hora_saida);
-        const statusHoje = !pontosHoje || pontosHoje.length === 0 ? 'nenhum_registro' : (temEntradaAberta ? 'em_andamento' : 'concluido');
+      const hoje = new Date().toISOString().split('T')[0];
+      const { data: pontosHoje } = await supabase.from('pontos').select('*').eq('aluno_id', alunoId).gte('data', hoje) as { data: Record<string, unknown>[] | null };
+      const { data: todosPontos } = await supabase.from('pontos').select('tempo_total_minutos, status_frequencia').eq('aluno_id', alunoId) as { data: Record<string, unknown>[] | null };
 
-        const horasCumpridas = (usuario.total_horas as number) || 0;
+      const temEntradaAberta = pontosHoje?.some(p => !p.hora_saida);
+      const statusHoje = !pontosHoje || pontosHoje.length === 0 ? 'nenhum_registro' : (temEntradaAberta ? 'em_andamento' : 'concluido');
 
-        const metricas: Record<string, string | number> = {
-          categoriaCarga,
-          horasCumpridasTotal: horasCumpridas,
-          horasPendentes: Math.max(0, categoriaCarga - horasCumpridas),
-          atrasos: pontosHoje?.filter(p => p.status_frequencia === 'atraso').length || 0,
-          faltas: pontosHoje?.filter(p => p.status_frequencia === 'ausencia').length || 0,
-          statusHoje,
-        };
+      const minutosValidados = (todosPontos || [])
+        .filter(p => p.status_frequencia !== 'ausencia')
+        .reduce((soma, p) => soma + (Number(p.tempo_total_minutos) || 0), 0);
+      const horasCumpridas = Math.round((minutosValidados / 60) * 10) / 10;
 
-        const curso = aluno?.cursos as Record<string, unknown> | null;
-        const periodo = aluno?.periodos as Record<string, unknown> | null;
-        const turno = aluno?.turnos as Record<string, unknown> | null;
-        const setor = aluno?.setores_clinica as Record<string, unknown> | null;
+      const totalHorasFirmadas = gradeFirmada?.confirmado
+        ? gradeFirmada.selecoes.reduce((soma, sel) => {
+            const [hI, mI] = sel.hora_inicio.split(':').map(Number);
+            const [hF, mF] = sel.hora_fim.split(':').map(Number);
+            return soma + (hF * 60 + mF - hI * 60 - mI) / 60;
+          }, 0)
+        : 0;
 
-        const alunoComPerfil = {
-          ...aluno,
-          matricula: usuario.matricula,
-          curso_nome: curso?.nome || null,
-          periodo_nome: periodo?.nome || null,
-          periodo_codigo: periodo?.codigo || null,
-          turno_nome: turno?.nome || null,
-          turno_codigo: turno?.codigo || null,
-          setor_nome: setor?.nome || null,
-        };
+      const metricas: Record<string, string | number> = {
+        categoriaCarga,
+        horasCumpridasTotal: horasCumpridas,
+        horasPendentes: Math.max(0, categoriaCarga - horasCumpridas),
+        totalHorasFirmadas,
+        atrasos: pontosHoje?.filter(p => p.status_frequencia === 'atraso').length || 0,
+        faltas: pontosHoje?.filter(p => p.status_frequencia === 'ausencia').length || 0,
+        statusHoje,
+      };
 
-        setDashboard({ metricas, proximoAgendamento: agendamento?.[0] || null, aluno: alunoComPerfil, usuario });
-      } catch {
-        setDashboard(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDashboard();
+      const curso = aluno?.cursos as Record<string, unknown> | null;
+      const periodo = aluno?.periodos as Record<string, unknown> | null;
+      const turno = aluno?.turnos as Record<string, unknown> | null;
+      const setor = aluno?.setores_clinica as Record<string, unknown> | null;
+
+      const alunoComPerfil = {
+        ...aluno,
+        matricula: usuario.matricula,
+        curso_nome: curso?.nome || null,
+        periodo_nome: periodo?.nome || null,
+        periodo_codigo: periodo?.codigo || null,
+        turno_nome: turno?.nome || null,
+        turno_codigo: turno?.codigo || null,
+        setor_nome: setor?.nome || null,
+      };
+
+      setDashboard({ metricas, aluno: alunoComPerfil, usuario });
+    } catch (err) {
+      console.error('Erro ao carregar painel do aluno:', err);
+      setDashboard(null);
+    } finally {
+      setLoading(false);
+    }
   }, [usuario]);
+
+  useEffect(() => {
+    carregarDados();
+  }, [carregarDados]);
 
   if (loading) {
     return <section><div style={{ padding: '4rem', textAlign: 'center', color: '#94A3B8' }}>Carregando painel...</div></section>;
   }
 
   const metricas = dashboard?.metricas || {};
-  const proximoAgendamento = dashboard?.proximoAgendamento || null;
   const aluno = dashboard?.aluno || null;
-  const semRegistro = dashboard?.mensagem || null;
 
   const categoriaCarga = Number(metricas.categoriaCarga) || 6;
   const horasCumpridas = Number(metricas.horasCumpridasTotal) || 0;
   const horasPendentes = Number(metricas.horasPendentes) || 0;
+  const totalHorasFirmadas = Number(metricas.totalHorasFirmadas) || 0;
   const atrasos = Number(metricas.atrasos) || 0;
   const faltas = Number(metricas.faltas) || 0;
   const percHoras = categoriaCarga > 0 ? Math.min(100, (horasCumpridas / categoriaCarga) * 100) : 0;
 
+  const firmado = gradeFirmada?.confirmado === true;
+
   return (
     <section>
-      <div className="page-header">
-        <h1 className="page-title">Painel do Aluno</h1>
-        <p className="page-subtitle">
-          Olá, <strong>{usuario?.nome || 'Aluno'}</strong>! Acompanhe sua carga horária semanal, presenças e frequência.
-        </p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 className="page-title">Painel do Aluno</h1>
+          <p className="page-subtitle">
+            Olá, <strong>{usuario?.nome || 'Aluno'}</strong>! Acompanhe sua carga horária semanal, horário firmado, presenças e frequência.
+          </p>
+        </div>
+        <button onClick={carregarDados} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+          <RefreshCw size={14} /> Atualizar
+        </button>
       </div>
 
-      {semRegistro && (
-        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 10, padding: '1rem', fontSize: '0.88rem', color: '#92400E', marginBottom: '1.5rem' }}>
-          {semRegistro}
+      {firmado && (
+        <div style={{
+          background: '#D1FAE5',
+          border: '1px solid #10B981',
+          borderRadius: 12,
+          padding: '1rem 1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          marginBottom: '1.5rem',
+          flexWrap: 'wrap',
+        }}>
+          <Lock size={20} color="#065F46" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ margin: 0, color: '#065F46', fontWeight: 700, fontSize: '0.92rem' }}>
+              Seu horário semanal já está firmado ({totalHorasFirmadas}h — vigência {gradeFirmada?.vigencia_inicio ? new Date(gradeFirmada.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} até {gradeFirmada?.vigencia_fim ? new Date(gradeFirmada.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}).
+            </p>
+            <p style={{ margin: '0.25rem 0 0', color: '#065F46', fontSize: '0.82rem' }}>
+              Alterações somente pela administração. Acesse "Meu Horário Firmado" para imprimir o comprovante.
+            </p>
+          </div>
+          <button onClick={() => setActiveTab('meu-horario-firmado')} className="btn-primary" style={{ background: '#059669' }}>
+            Ver Horário Firmado
+          </button>
         </div>
       )}
 
@@ -113,8 +157,9 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
             <div className="progress-bar" style={{ width: `${percHoras}%` }} />
           </div>
         </MetricCard>
-        <MetricCard label="Horas Cumpridas (Semestre)" value={`${horasCumpridas}h`} accent="accent-green" />
+        <MetricCard label="Horas Cumpridas (registros validados)" value={`${horasCumpridas}h`} accent="accent-green" />
         <MetricCard label="Horas Pendentes" value={`${horasPendentes}h`} accent="accent-yellow" />
+        <MetricCard label="Horário Firmado" value={firmado ? `${totalHorasFirmadas}h` : 'Não firmado'} accent={firmado ? 'accent-green' : ''} />
         <MetricCard label="Atrasos Registrados" value={String(atrasos)} />
         <MetricCard label="Faltas Não Justificadas" value={String(faltas)} accent="accent-red" />
       </div>
@@ -123,17 +168,24 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
         <h3 style={{ color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Calendar size={20} /> Próximo Atendimento Agendado
         </h3>
-        {proximoAgendamento ? (
+        {firmado && gradeFirmada?.selecoes?.length ? (
           <div style={{ backgroundColor: 'var(--status-green-bg)', borderLeft: '4px solid var(--status-green)', padding: '1rem', borderRadius: '6px' }}>
-            <strong style={{ color: 'var(--primary)', fontSize: '1.1rem' }}>
-              {new Date(proximoAgendamento.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })} — {proximoAgendamento.hora_inicio} às {proximoAgendamento.hora_fim}
+            <strong style={{ color: 'var(--primary)', fontSize: '1.05rem' }}>
+              {gradeFirmada.selecoes.length} horário(s) firmado(s) por semana ({totalHorasFirmadas}h)
             </strong>
             <p style={{ marginTop: '0.25rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              Setor: {proximoAgendamento.setor_nome}
+              Dias: {[...gradeFirmada.selecoes]
+                .sort((a, b) => a.dia_semana - b.dia_semana || a.hora_inicio.localeCompare(b.hora_inicio))
+                .map(s => `Dia ${s.dia_semana} ${s.hora_inicio}–${s.hora_fim}`)
+                .join(' · ')}
             </p>
           </div>
         ) : (
-          <p style={{ color: 'var(--text-muted)', margin: 0 }}>Nenhum registro futuro. Acesse o Calendário de Presença para registrar.</p>
+          <p style={{ color: 'var(--text-muted)', margin: 0 }}>
+            {inscricaoAberta
+              ? 'Você ainda não firmou seu horário semanal. Acesse a Grade Semanal para escolher seus horários de prática.'
+              : 'Nenhum horário firmado. O período de inscrição está fechado — contate a administração.'}
+          </p>
         )}
       </div>
 
@@ -156,7 +208,7 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
       )}
 
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        {inscricaoAberta && (
+        {inscricaoAberta && !firmado && (
           <button onClick={() => setActiveTab('grade-semanal-aluno')} className="btn-primary">
             Escolher Horários na Grade
           </button>
