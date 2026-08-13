@@ -144,7 +144,13 @@ export const GestaoUsuariosPage = () => {
           situacao: formEditar.situacao_vinculo || 'ativo',
         });
         if (resAluno && resAluno.grade_reaberta) {
-          msg = 'Dados atualizados! A carga horária foi alterada e a grade do aluno foi reaberta com a indicação "Grade precisa de ajuste".';
+          if (resAluno.tipo_ajuste === 'aumento') {
+            msg = `Dados atualizados! Carga aumentada de ${resAluno.carga_anterior}h para ${resAluno.carga_nova}h. O aluno precisa selecionar mais ${resAluno.horas_necessarias}h na grade.`;
+          } else if (resAluno.tipo_ajuste === 'reducao') {
+            msg = `Dados atualizados! Carga reduzida de ${resAluno.carga_anterior}h para ${resAluno.carga_nova}h. O aluno precisa remover ${resAluno.horas_remover}h na grade.`;
+          } else {
+            msg = 'Dados atualizados! A carga horária foi alterada e a grade do aluno foi reaberta.';
+          }
         }
       }
 
@@ -598,10 +604,23 @@ export const GestaoUsuariosPage = () => {
               <div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem', background: 'var(--bg-main)', padding: '1rem', borderRadius: 8, fontSize: '0.85rem' }}>
                   <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Status</span><strong style={{ color: gradeAluno.confirmado ? '#10B981' : '#F59E0B' }}>{gradeAluno.confirmado ? 'Confirmado' : 'Pendente'}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Categoria</span><strong>{String(gradeAluno.categoria_carga ?? '-')}h semanais</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Total Selecionado</span><strong>{String(gradeAluno.total_horas ?? 0)}h</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Vigencia</span><strong>{gradeAluno.vigencia_inicio ? new Date(gradeAluno.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} - {gradeAluno.vigencia_fim ? new Date(gradeAluno.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Carga Semanal</span><strong>{String(gradeAluno.categoria_carga ?? '-')}h</strong></div>
+                  {gradeAluno.horas_firmadas !== undefined && Number(gradeAluno.horas_firmadas) > 0 && (
+                    <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Horas Firmadas</span><strong style={{ color: '#065F46' }}>{String(gradeAluno.horas_firmadas)}h</strong></div>
+                  )}
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Total Selecionado</span><strong>{String(gradeAluno.total_horas_selecionadas ?? gradeAluno.total_horas ?? 0)}h</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Vigencia</span><strong>{gradeAluno.vigencia_inicio ? new Date(String(gradeAluno.vigencia_inicio) + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} - {gradeAluno.vigencia_fim ? new Date(String(gradeAluno.vigencia_fim) + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</strong></div>
                 </div>
+                {!gradeAluno.confirmado && gradeAluno.horas_firmadas !== undefined && Number(gradeAluno.horas_firmadas) > 0 && Number(gradeAluno.horas_firmadas) < Number(gradeAluno.categoria_carga ?? 0) && (
+                  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#1E40AF' }}>
+                    <strong>Ajuste pendente:</strong> {String(gradeAluno.horas_firmadas)}h firmadas de {String(gradeAluno.categoria_carga)}h. O aluno precisa selecionar mais {String(Number(gradeAluno.categoria_carga) - Number(gradeAluno.horas_firmadas))}h.
+                  </div>
+                )}
+                {!gradeAluno.confirmado && gradeAluno.horas_rascunho !== undefined && Number(gradeAluno.horas_rascunho) > 0 && Number(gradeAluno.horas_rascunho) !== Number(gradeAluno.categoria_carga ?? 0) && gradeAluno.horas_firmadas === 0 && (
+                  <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#92400E' }}>
+                    <strong>Ajuste pendente:</strong> {String(gradeAluno.horas_rascunho)}h selecionadas de {String(gradeAluno.categoria_carga)}h. O aluno precisa ajustar para {String(gradeAluno.categoria_carga)}h.
+                  </div>
+                )}
 
                 {Array.isArray(gradeAluno.selecoes) && gradeAluno.selecoes.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>

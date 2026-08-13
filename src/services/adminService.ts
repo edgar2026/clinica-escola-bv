@@ -768,7 +768,7 @@ export const adminService = {
     turno_id?: number | null;
     setor_id?: number | null;
     situacao?: string;
-  }): Promise<{ sucesso: boolean; mensagem: string; grade_reaberta?: boolean }> {
+  }): Promise<{ sucesso: boolean; mensagem: string; grade_reaberta?: boolean; tipo_ajuste?: string; carga_anterior?: number; carga_nova?: number; horas_necessarias?: number; horas_remover?: number }> {
     const { data, error } = await supabase.rpc('atualizar_aluno_admin', {
       p_aluno_id: alunoId,
       p_carga_horaria_semanal: dados.carga_horaria_semanal ?? null,

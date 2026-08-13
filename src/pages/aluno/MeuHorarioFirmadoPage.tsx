@@ -1,17 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Printer, Calendar, RefreshCw, Lock } from 'lucide-react';
+import { Printer, Calendar, RefreshCw, Lock, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { getAlunoId } from '../../services/helpers';
 import type { GradeFirmadaInfo } from '../../types';
 
 const DIAS_SEMANA: Record<number, string> = {
-  1: 'Segunda',
-  2: 'Terça',
-  3: 'Quarta',
-  4: 'Quinta',
-  5: 'Sexta',
-  6: 'Sábado',
+  1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado',
 };
 
 export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
@@ -42,9 +37,7 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
     }
   }, [showToast]);
 
-  useEffect(() => {
-    carregarHorariosFirmados();
-  }, [carregarHorariosFirmados]);
+  useEffect(() => { carregarHorariosFirmados(); }, [carregarHorariosFirmados]);
 
   const firmado = grade?.confirmado === true;
   const totalHoras = firmado
@@ -55,8 +48,13 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
       }, 0)
     : 0;
 
-  const hojeStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const horasFirmadas = grade?.horas_firmadas ?? 0;
+  const horasRascunho = grade?.horas_rascunho ?? 0;
+  const temRascunho = grade && grade.selecoes && grade.selecoes.length > 0 && !firmado && horasRascunho > 0;
+  const precisaComplemento = !firmado && horasFirmadas > 0 && horasFirmadas < (grade?.categoria_carga ?? 0);
+  const precisaReducao = !firmado && horasRascunho > 0 && horasRascunho !== (grade?.categoria_carga ?? 0) && horasFirmadas === 0;
 
+  const hojeStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
   const formatarDataFim = (d?: string | null) => {
     if (!d) return '-';
     return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -105,7 +103,7 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
           </div>
         </div>
 
-        {!firmado ? (
+        {!firmado && !temRascunho && !precisaComplemento && !precisaReducao ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', background: '#F8FAFC', borderRadius: 8, color: 'var(--text-muted)' }}>
             <Calendar size={36} color="var(--primary)" style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
             <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Você ainda não firmou seu horário semanal.</p>
@@ -122,22 +120,84 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
               </p>
             )}
           </div>
+        ) : (precisaComplemento || precisaReducao) && !firmado ? (
+          /* Ajuste pendente: complemento ou redução */
+          <div>
+            <div style={{
+              background: precisaComplemento ? '#EFF6FF' : '#FEF3C7',
+              border: precisaComplemento ? '1px solid #3B82F6' : '1px solid #F59E0B',
+              borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem',
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+            }}>
+              <AlertTriangle size={20} color={precisaComplemento ? '#2563EB' : '#D97706'} style={{ flexShrink: 0 }} />
+              <div>
+                <p style={{ margin: 0, fontWeight: 700, color: precisaComplemento ? '#1E40AF' : '#92400E', fontSize: '0.92rem' }}>
+                  {precisaComplemento ? 'Complemento Necessário' : 'Redução Necessária'}
+                </p>
+                <p style={{ margin: '0.25rem 0 0', color: precisaComplemento ? '#1D4ED8' : '#B45309', fontSize: '0.85rem' }}>
+                  {precisaComplemento
+                    ? `Sua carga foi aumentada para ${grade?.categoria_carga ?? 0}h. Você possui ${horasFirmadas.toFixed(0)}h firmadas. Selecione mais ${(grade?.categoria_carga ?? 0) - horasFirmadas}h na Grade Semanal.`
+                    : `Sua carga foi reduzida para ${grade?.categoria_carga ?? 0}h. Remova ${(horasRascunho - (grade?.categoria_carga ?? 0)).toFixed(0)}h na Grade Semanal.`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Mostra horários firmados (parcial) */}
+            {grade && grade.selecoes && grade.selecoes.length > 0 && (
+              <>
+                <div style={{ marginBottom: '0.75rem', fontWeight: 700, color: 'var(--primary)', fontSize: '0.9rem' }}>
+                  Horários Selecionados (parcialmente firmados):
+                </div>
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Dia da Semana</th>
+                        <th>Horário</th>
+                        <th>Clínica / Setor</th>
+                        <th>Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grade && [...grade.selecoes]
+                        .sort((a, b) => a.dia_semana - b.dia_semana || a.hora_inicio.localeCompare(b.hora_inicio))
+                        .map(sel => (
+                          <tr key={sel.vaga_horario_id}>
+                            <td><strong>{DIAS_SEMANA[sel.dia_semana] || `Dia ${sel.dia_semana}`}</strong></td>
+                            <td>{sel.hora_inicio} – {sel.hora_fim}</td>
+                            <td>{sel.setor_nome || 'Clínica-Escola'}</td>
+                            <td>
+                              <span className={`badge-vaga ${sel.confirmado ? 'verde' : 'amarelo'}`}>
+                                {sel.confirmado ? 'Firmado' : 'Pendente'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  <button onClick={() => setActiveTab('grade-semanal-aluno')} className="btn-primary">
+                    {precisaComplemento ? 'Complementar Horário' : 'Ajustar Horário'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         ) : (
+          /* Grade firmada (totalmente confirmada) */
           <>
             <div style={{
-              background: '#D1FAE5',
-              border: '1px solid #10B981',
-              borderRadius: 12,
-              padding: '1rem 1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              marginBottom: '1.5rem',
+              background: '#D1FAE5', border: '1px solid #10B981', borderRadius: 12,
+              padding: '1rem 1.25rem', display: 'flex', alignItems: 'center',
+              gap: '0.75rem', marginBottom: '1.5rem',
             }}>
               <Lock size={20} color="#065F46" style={{ flexShrink: 0 }} />
               <div>
                 <p style={{ margin: 0, color: '#065F46', fontWeight: 700, fontSize: '0.92rem' }}>
-                  Seu horário semanal já está firmado.
+                  Seu horário semanal já está firmado — Carga completa: {totalHoras}h de {grade?.categoria_carga ?? 0}h.
                 </p>
                 <p style={{ margin: '0.25rem 0 0', color: '#065F46', fontSize: '0.82rem' }}>
                   Vigência: {formatarDataFim(grade?.vigencia_inicio)} até {formatarDataFim(grade?.vigencia_fim)} — alterações somente pela administração.
@@ -157,7 +217,7 @@ export const MeuHorarioFirmadoPage = ({ setActiveTab }: { setActiveTab: (tab: st
                   </tr>
                 </thead>
                 <tbody>
-                  {[...grade.selecoes]
+                  {grade && [...grade.selecoes]
                     .sort((a, b) => a.dia_semana - b.dia_semana || a.hora_inicio.localeCompare(b.hora_inicio))
                     .map(sel => (
                       <tr key={sel.vaga_horario_id}>
