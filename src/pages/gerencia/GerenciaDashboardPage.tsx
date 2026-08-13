@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { MetricCard } from '../../components/common/MetricCard';
-import { Users, FileText, RefreshCw, CheckCircle, XCircle, Edit3, CalendarClock } from 'lucide-react';
+import { Users, FileText, RefreshCw, CheckCircle, XCircle, Edit3, CalendarClock, Radio, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { formatarData } from '../../utils/datas';
 import { gerenciaService } from '../../services/gerenciaService';
 import { pontoService } from '../../services/pontoService';
-import type { Ponto, MonitorAluno, MonitorPresencas } from '../../types';
+import { supabase } from '../../services/supabaseClient';
+import type { Ponto, MonitorFaixa, MonitorAlunoFaixa, MonitorPresencas, SituacaoMonitor } from '../../types';
 
 const DIAS_PT: Record<number, string> = {
   1: 'Segunda',
@@ -16,48 +17,114 @@ const DIAS_PT: Record<number, string> = {
   6: 'Sábado',
 };
 
-const formatarHorariosFirmados = (monitor: MonitorAluno): string => {
-  if (!monitor.grade_confirmada || !monitor.horarios_firmados) return '—';
-  return monitor.horarios_firmados
-    .split(', ')
-    .map(h => {
-      const m = h.match(/^dia (\d) (\d{2}:\d{2})-(\d{2}:\d{2})$/);
-      if (!m) return h;
-      return `${DIAS_PT[Number(m[1])] || m[1]} ${m[2]}–${m[3]}`;
-    })
-    .join(' · ');
+const SITUACAO_META: Record<SituacaoMonitor, { label: string; bg: string; color: string; border: string }> = {
+  aguardando: { label: 'Aguardando horário', bg: '#F1F5F9', color: '#475569', border: '#CBD5E1' },
+  presente: { label: 'Presente', bg: '#F0FDF4', color: '#15803D', border: '#86EFAC' },
+  atrasado: { label: 'Atrasado', bg: '#FFFBEB', color: '#B45309', border: '#FDE68A' },
+  finalizado: { label: 'Finalizado', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
+  ausente: { label: 'Ausente', bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA' },
+  saida_nao_registrada: { label: 'Saída não registrada', bg: '#FFF7ED', color: '#C2410C', border: '#FDBA74' },
+  em_analise: { label: 'Em análise', bg: '#FAF5FF', color: '#6D28D9', border: '#E9D5FF' },
 };
+
+const BadgeSituacao = ({ situacao }: { situacao: SituacaoMonitor }) => {
+  const meta = SITUACAO_META[situacao] || SITUACAO_META.aguardando;
+  return (
+    <span className="badge-vaga" style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`, whiteSpace: 'nowrap' }}>
+      {meta.label}
+    </span>
+  );
+};
+
+const ContadorBadge = ({ label, valor, color }: { label: string; valor: number; color: string }) => (
+  <span className="badge-vaga" style={{ background: `${color}1A`, color, border: `1px solid ${color}40`, whiteSpace: 'nowrap' }}>
+    <strong>{valor}</strong> {label}
+  </span>
+);
 
 export const GerenciaDashboardPage = () => {
   const { showToast } = useAuth();
   const [monitor, setMonitor] = useState<MonitorPresencas | null>(null);
   const [loading, setLoading] = useState(true);
+  const [realtimeStatus, setRealtimeStatus] = useState<'conectando' | 'conectado' | 'fallback'>('conectando');
+  const [faixaAberta, setFaixaAberta] = useState<string | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Ponto[]>([]);
   const [modalSolicitacao, setModalSolicitacao] = useState<Ponto | null>(null);
   const [acaoSolicitacao, setAcaoSolicitacao] = useState<'aprovar' | 'corrigir' | 'rejeitar'>('aprovar');
   const [parecerSolicitacao, setParecerSolicitacao] = useState('');
   const [saidaCorrigida, setSaidaCorrigida] = useState('');
   const [processandoSolicitacao, setProcessandoSolicitacao] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const carregarDashboard = useCallback(async () => {
-    setLoading(true);
+  const carregarDashboard = useCallback(async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     try {
       const res = await gerenciaService.getMonitorPresencas();
       setMonitor(res);
-
       const sols = await pontoService.getSolicitacoesPendentes().catch(() => []);
       setSolicitacoes(sols);
     } catch (err) {
       console.error('Erro ao carregar dashboard gerencial:', err);
-      showToast('Erro ao carregar o monitor: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
+      if (!silencioso) {
+        showToast('Erro ao carregar o monitor: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
+      }
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   }, [showToast]);
 
   useEffect(() => {
     carregarDashboard();
   }, [carregarDashboard]);
+
+  useEffect(() => {
+    let ativo = true;
+    const canal = supabase.channel('monitor-ao-vivo');
+
+    const tabelas: Array<{ table: string; filter?: string }> = [
+      { table: 'pontos' },
+      { table: 'grade_semanal_selecoes' },
+      { table: 'justificativas' },
+      { table: 'vagas_horarios' },
+    ];
+
+    for (const t of tabelas) {
+      canal.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: t.table },
+        () => { if (ativo) carregarDashboard(true); }
+      );
+    }
+
+    canal.subscribe((status) => {
+      if (!ativo) return;
+      if (status === 'SUBSCRIBED') {
+        setRealtimeStatus('conectado');
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        setRealtimeStatus('fallback');
+        if (!intervalRef.current) {
+          intervalRef.current = setInterval(() => { if (ativo) carregarDashboard(true); }, 30000);
+        }
+      }
+    });
+
+    return () => {
+      ativo = false;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      supabase.removeChannel(canal);
+    };
+  }, [carregarDashboard]);
+
+  const toggleFaixa = (chave: string) => {
+    setFaixaAberta(prev => (prev === chave ? null : chave));
+  };
 
   const handleProcessarSolicitacao = async () => {
     if (!modalSolicitacao) return;
@@ -97,16 +164,103 @@ export const GerenciaDashboardPage = () => {
     }
   };
 
+  const renderFaixa = (faixa: MonitorFaixa) => {
+    const chave = `${faixa.hora_inicio}-${faixa.hora_fim}`;
+    const aberta = faixaAberta === chave;
+    return (
+      <div key={chave} style={{ marginBottom: '0.75rem', borderRadius: 12, border: '1px solid var(--border-color)', overflow: 'hidden', background: '#FFF' }}>
+        <button
+          onClick={() => toggleFaixa(chave)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0.85rem 1rem', background: aberta ? '#F8FAFC' : '#FFF', border: 'none', cursor: 'pointer',
+            textAlign: 'left', flexWrap: 'wrap', gap: '0.5rem'
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            {aberta ? <ChevronDown size={18} color="var(--primary)" /> : <ChevronRight size={18} color="var(--primary)" />}
+            <strong style={{ fontSize: '1rem', color: 'var(--primary)' }}>{faixa.hora_inicio} – {faixa.hora_fim}</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{faixa.setores}</span>
+          </span>
+          <span style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <ContadorBadge label="esperados" valor={faixa.alunos_esperados} color="#475569" />
+            <ContadorBadge label="presentes agora" valor={faixa.presentes_agora} color="#16A34A" />
+            <ContadorBadge label="ainda não chegaram" valor={faixa.ainda_nao_chegaram} color="#64748B" />
+            <ContadorBadge label="atrasados" valor={faixa.atrasados} color="#D97706" />
+            <ContadorBadge label="saíram" valor={faixa.saidos} color="#2563EB" />
+            <ContadorBadge label="ausentes" valor={faixa.ausentes} color="#DC2626" />
+            <span className="badge-vaga" style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
+              {faixa.alunos_esperados}/{faixa.capacidade_total} capacidade
+            </span>
+          </span>
+        </button>
+
+        {aberta && (
+          <div style={{ padding: '0 1rem 1rem' }}>
+            {faixa.alunos.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem' }}>Nenhum aluno com horário firmado neste período.</div>
+            ) : (
+              <div className="table-container" style={{ margin: 0 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Aluno (Matrícula)</th>
+                      <th>Curso</th>
+                      <th>Entrada</th>
+                      <th>Saída</th>
+                      <th>Situação Atual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {faixa.alunos.map((a: MonitorAlunoFaixa) => (
+                      <tr key={a.aluno_id}>
+                        <td><strong>{a.nome}</strong> ({a.matricula})</td>
+                        <td>{a.curso_nome || '-'}</td>
+                        <td>{a.hora_entrada || '—'}</td>
+                        <td>{a.hora_saida || '—'}</td>
+                        <td><BadgeSituacao situacao={a.situacao} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <section>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 className="page-title">Painel Gerencial — Monitoramento & Validações</h1>
-          <p className="page-subtitle">Dados reais persistidos: usuário, aluno, carga semanal, horários firmados e registros de presença.</p>
+          <p className="page-subtitle">Dados reais persistidos: apenas alunos (perfil ALUNO) com vínculo ativo, horários firmados e registros de presença.</p>
         </div>
-        <button onClick={carregarDashboard} disabled={loading} className="btn-secondary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <RefreshCw size={14} className={loading ? 'spin' : ''} /> Atualizar Painel
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {monitor && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              <Clock size={14} />
+              {formatarData(monitor.metricas.hoje_data)} · {DIAS_PT[monitor.metricas.hoje_dia_semana] || 'Domingo'} · {monitor.metricas.hora_atual} (servidor)
+            </span>
+          )}
+          <span
+            className="badge-vaga"
+            style={{
+              background: realtimeStatus === 'conectado' ? '#F0FDF4' : realtimeStatus === 'fallback' ? '#FFFBEB' : '#F1F5F9',
+              color: realtimeStatus === 'conectado' ? '#15803D' : realtimeStatus === 'fallback' ? '#B45309' : '#475569',
+              border: `1px solid ${realtimeStatus === 'conectado' ? '#BBF7D0' : realtimeStatus === 'fallback' ? '#FDE68A' : '#CBD5E1'}`,
+              display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap'
+            }}
+          >
+            <Radio size={13} />
+            {realtimeStatus === 'conectado' ? 'Tempo real conectado' : realtimeStatus === 'fallback' ? 'Tempo real indisponível — atualização a cada 30s' : 'Conectando...'}
+          </span>
+          <button onClick={() => carregarDashboard()} disabled={loading} className="btn-secondary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Atualizar Painel
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -144,64 +298,17 @@ export const GerenciaDashboardPage = () => {
           )}
 
           <h3 style={{ color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Users size={20} /> Alunos — Carga Semanal, Horário Firmado e Presenças
+            <Users size={20} /> Faixas de Horário de Hoje — Alunos com Horário Firmado
           </h3>
-          <div className="table-container" style={{ marginBottom: '2rem' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Aluno (Matrícula)</th>
-                  <th>Curso</th>
-                  <th>Carga Semanal</th>
-                  <th>Horário Firmado</th>
-                  <th>Vigência</th>
-                  <th>Presenças</th>
-                  <th>Situação Hoje</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!monitor || monitor.alunos.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>Nenhum aluno cadastrado.</td></tr>
-                ) : monitor.alunos.map(a => (
-                  <tr key={a.aluno_id}>
-                    <td><strong>{a.nome}</strong> ({a.matricula})</td>
-                    <td>{a.curso_nome || '-'}</td>
-                    <td><span className="badge-vaga verde">{a.carga_horaria_semanal}h semanais</span></td>
-                    <td>
-                      {a.grade_confirmada ? (
-                        <span style={{ fontSize: '0.8rem', color: '#065F46', fontWeight: 600 }}>
-                          {formatarHorariosFirmados(a)}
-                        </span>
-                      ) : (
-                        <span className="badge-vaga amarelo" style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FDBA74' }}>
-                          Não firmado
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: '0.82rem' }}>
-                      {a.grade_confirmada && a.vigencia_inicio
-                        ? `${new Date(a.vigencia_inicio + 'T12:00:00').toLocaleDateString('pt-BR')} – ${a.vigencia_fim ? new Date(a.vigencia_fim + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}`
-                        : '-'}
-                    </td>
-                    <td style={{ fontSize: '0.82rem' }}>
-                      {a.total_presencas > 0
-                        ? `${a.total_presencas} registro(s) · ${a.horas_cumpridas}h cumpridas`
-                        : 'Nenhum registro'}
-                    </td>
-                    <td>
-                      {a.presente_agora ? (
-                        <span className="badge-vaga verde">🟢 No local</span>
-                      ) : a.atrasos_hoje > 0 ? (
-                        <span className="badge-vaga amarelo">⚠️ Atraso</span>
-                      ) : (
-                        <span className="badge-vaga" style={{ background: '#F1F5F9', color: '#475569' }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {monitor && monitor.faixas.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem', border: '1px dashed var(--border-color)', borderRadius: 12, marginBottom: '2rem' }}>
+              Nenhum horário firmado para hoje ({DIAS_PT[monitor.metricas.hoje_dia_semana] || 'Domingo'}).
+            </div>
+          ) : (
+            <div style={{ marginBottom: '2rem' }}>
+              {monitor && monitor.faixas.map(f => renderFaixa(f))}
+            </div>
+          )}
 
           <h3 style={{ color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <FileText size={20} /> 📋 Fila de Análise: Ajustes de Saída & Justificativas

@@ -442,32 +442,42 @@ export interface GradeFirmadaInfo {
   pode_exibir_grade?: boolean;
 }
 
-export interface MonitorAluno {
+export type SituacaoMonitor =
+  | 'aguardando'
+  | 'presente'
+  | 'atrasado'
+  | 'finalizado'
+  | 'ausente'
+  | 'saida_nao_registrada'
+  | 'em_analise';
+
+export interface MonitorAlunoFaixa {
   aluno_id: number;
   usuario_id: number;
   nome: string;
   matricula: string;
-  email: string;
   curso_nome: string | null;
-  periodo_nome: string | null;
-  turno_nome: string | null;
+  vaga_horario_id: number;
   setor_nome: string | null;
-  carga_horaria_semanal: number;
-  categoria_carga_horas: number | null;
-  situacao: string;
-  grade_confirmada: boolean;
-  confirmado_em: string | null;
-  horarios_firmados: string | null;
-  config_id: number | null;
-  vigencia_inicio: string | null;
-  vigencia_fim: string | null;
-  config_status: string | null;
-  total_presencas: number;
-  horas_cumpridas: number;
-  ultima_presenca_data: string | null;
-  presencas_hoje: number;
-  presente_agora: boolean;
-  atrasos_hoje: number;
+  hora_entrada: string | null;
+  hora_saida: string | null;
+  situacao: SituacaoMonitor;
+  status_frequencia: string | null;
+  tem_justificativa_pendente: boolean;
+}
+
+export interface MonitorFaixa {
+  hora_inicio: string;
+  hora_fim: string;
+  setores: string;
+  capacidade_total: number;
+  alunos_esperados: number;
+  presentes_agora: number;
+  ainda_nao_chegaram: number;
+  atrasados: number;
+  saidos: number;
+  ausentes: number;
+  alunos: MonitorAlunoFaixa[];
 }
 
 export interface MonitorPresencas {
@@ -479,8 +489,11 @@ export interface MonitorPresencas {
     solicitacoes_pendentes: number;
     slots_com_vagas: number;
     grades_confirmadas: number;
+    hoje_data: string;
+    hoje_dia_semana: number;
+    hora_atual: string;
   };
-  alunos: MonitorAluno[];
+  faixas: MonitorFaixa[];
   config: {
     id: number | null;
     vigencia_inicio: string | null;
