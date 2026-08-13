@@ -270,7 +270,7 @@ export const EspelhoPontoPage = () => {
                       {r.status_frequencia === 'falta_justificada' && <span className="badge-vaga verde" style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #86EFAC' }}>✅ Falta Justificada</span>}
                     </td>
                     <td>
-                      {(r.status_frequencia === 'atraso' || r.status_frequencia === 'ausencia') && (
+                      {(r.status_frequencia === 'atraso' || r.status_frequencia === 'ausencia' || r.status_frequencia === 'aguardando_validacao') && (
                         <button
                           onClick={() => { setItemParaJustificar(r); setTextoJustificativa(''); setArquivoAnexo(null); setTipoMotivo('consulta_medica'); }}
                           className="btn-primary"
@@ -288,7 +288,7 @@ export const EspelhoPontoPage = () => {
                           <Clock size={13} /> Solicitar Ajuste de Saída
                         </button>
                       )}
-                      {r.status_frequencia !== 'atraso' && r.status_frequencia !== 'ausencia' && r.status_frequencia !== 'saida_nao_registrada' && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>-</span>}
+                      {r.status_frequencia !== 'atraso' && r.status_frequencia !== 'ausencia' && r.status_frequencia !== 'aguardando_validacao' && r.status_frequencia !== 'saida_nao_registrada' && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>-</span>}
                     </td>
                   </tr>
                 ))

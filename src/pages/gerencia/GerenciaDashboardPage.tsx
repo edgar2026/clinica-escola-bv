@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { MetricCard } from '../../components/common/MetricCard';
-import { Users, FileText, RefreshCw, CheckCircle, XCircle, Edit3, CalendarClock, Radio, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { Users, FileText, RefreshCw, CheckCircle, XCircle, RotateCcw, CalendarClock, Radio, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { formatarData } from '../../utils/datas';
 import { gerenciaService } from '../../services/gerenciaService';
 import { pontoService } from '../../services/pontoService';
@@ -50,10 +50,9 @@ export const GerenciaDashboardPage = () => {
   const [faixaAberta, setFaixaAberta] = useState<string | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Ponto[]>([]);
   const [modalSolicitacao, setModalSolicitacao] = useState<Ponto | null>(null);
-  const [acaoSolicitacao, setAcaoSolicitacao] = useState<'aprovar' | 'corrigir' | 'rejeitar'>('aprovar');
-  const [parecerSolicitacao, setParecerSolicitacao] = useState('');
-  const [saidaCorrigida, setSaidaCorrigida] = useState('');
-  const [processandoSolicitacao, setProcessandoSolicitacao] = useState(false);
+  const [acaoOcorrencia, setAcaoOcorrencia] = useState<'aprovar' | 'rejeitar' | 'reposicao'>('aprovar');
+  const [observacaoOcorrencia, setObservacaoOcorrencia] = useState('');
+  const [processandoOcorrencia, setProcessandoOcorrencia] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const carregarDashboard = useCallback(async (silencioso = false) => {
@@ -126,25 +125,21 @@ export const GerenciaDashboardPage = () => {
     setFaixaAberta(prev => (prev === chave ? null : chave));
   };
 
-  const handleProcessarSolicitacao = async () => {
+  const handleProcessarOcorrencia = async () => {
     if (!modalSolicitacao) return;
-    if (!parecerSolicitacao || parecerSolicitacao.length < 5) {
-      showToast('Insira um parecer administrativo (mínimo 5 caracteres).', 'erro');
+
+    if ((acaoOcorrencia === 'rejeitar' || acaoOcorrencia === 'reposicao') && (!observacaoOcorrencia || observacaoOcorrencia.length < 3)) {
+      showToast('Observação obrigatória (mínimo 3 caracteres) para reprovar ou encaminhar para reposição.', 'erro');
       return;
     }
 
-    if (acaoSolicitacao === 'corrigir' && !saidaCorrigida) {
-      showToast('Para correção, informe o horário de saída corrigido.', 'erro');
-      return;
-    }
-
-    setProcessandoSolicitacao(true);
+    setProcessandoOcorrencia(true);
     try {
-      const res = await pontoService.analisarSolicitacao(
-        modalSolicitacao.id,
-        acaoSolicitacao,
-        parecerSolicitacao,
-        acaoSolicitacao === 'corrigir' ? saidaCorrigida : undefined
+      const justificativaId = modalSolicitacao.justificativa_id || modalSolicitacao.id;
+      const res = await pontoService.analisarOcorrencia(
+        justificativaId,
+        acaoOcorrencia,
+        observacaoOcorrencia || undefined
       );
 
       if (res.sucesso) {
@@ -154,13 +149,12 @@ export const GerenciaDashboardPage = () => {
         showToast(res.mensagem, 'erro');
       }
     } catch (err) {
-      showToast('Erro ao processar solicitação: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
+      showToast('Erro ao processar ocorrência: ' + (err instanceof Error ? err.message : 'Tente novamente.'), 'erro');
     } finally {
       setModalSolicitacao(null);
-      setParecerSolicitacao('');
-      setSaidaCorrigida('');
-      setAcaoSolicitacao('aprovar');
-      setProcessandoSolicitacao(false);
+      setObservacaoOcorrencia('');
+      setAcaoOcorrencia('aprovar');
+      setProcessandoOcorrencia(false);
     }
   };
 
@@ -358,7 +352,7 @@ export const GerenciaDashboardPage = () => {
                       </td>
                       <td style={{ fontSize: '0.85rem', maxWidth: 200 }}>{s.descricao || s.justificativa || '-'}</td>
                       <td>
-                        <button onClick={() => { setModalSolicitacao(s); setAcaoSolicitacao('aprovar'); setParecerSolicitacao(''); setSaidaCorrigida(''); }} className="btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                        <button onClick={() => { setModalSolicitacao(s); setAcaoOcorrencia('aprovar'); setObservacaoOcorrencia(''); }} className="btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
                           Analisar
                         </button>
                       </td>
@@ -376,7 +370,7 @@ export const GerenciaDashboardPage = () => {
           <div className="modal-card" style={{ maxWidth: 580 }}>
             <div className="modal-header">
               <h3 style={{ color: 'var(--primary)', margin: 0 }}>Análise de Solicitação</h3>
-              <button onClick={() => { setModalSolicitacao(null); setParecerSolicitacao(''); setSaidaCorrigida(''); }} className="btn-close">&times;</button>
+              <button onClick={() => { setModalSolicitacao(null); setObservacaoOcorrencia(''); setAcaoOcorrencia('aprovar'); }} className="btn-close">&times;</button>
             </div>
 
             <div style={{ background: '#F8FAFC', padding: '1rem', borderRadius: 8, fontSize: '0.85rem', marginBottom: '1.25rem', border: '1px solid var(--border-color)' }}>
@@ -395,28 +389,28 @@ export const GerenciaDashboardPage = () => {
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
-                  onClick={() => setAcaoSolicitacao('aprovar')}
+                  onClick={() => setAcaoOcorrencia('aprovar')}
                   style={{
-                    flex: 1, padding: '0.6rem', borderRadius: 8, border: acaoSolicitacao === 'aprovar' ? '2px solid #16A34A' : '1px solid var(--border-color)',
-                    background: acaoSolicitacao === 'aprovar' ? '#F0FDF4' : '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem', color: '#16A34A'
+                    flex: 1, padding: '0.6rem', borderRadius: 8, border: acaoOcorrencia === 'aprovar' ? '2px solid #16A34A' : '1px solid var(--border-color)',
+                    background: acaoOcorrencia === 'aprovar' ? '#F0FDF4' : '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem', color: '#16A34A'
                   }}
                 >
                   <CheckCircle size={16} /> Aprovar
                 </button>
                 <button
-                  onClick={() => setAcaoSolicitacao('corrigir')}
+                  onClick={() => setAcaoOcorrencia('reposicao')}
                   style={{
-                    flex: 1, padding: '0.6rem', borderRadius: 8, border: acaoSolicitacao === 'corrigir' ? '2px solid #D97706' : '1px solid var(--border-color)',
-                    background: acaoSolicitacao === 'corrigir' ? '#FFFBEB' : '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem', color: '#D97706'
+                    flex: 1, padding: '0.6rem', borderRadius: 8, border: acaoOcorrencia === 'reposicao' ? '2px solid #D97706' : '1px solid var(--border-color)',
+                    background: acaoOcorrencia === 'reposicao' ? '#FFFBEB' : '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem', color: '#D97706'
                   }}
                 >
-                  <Edit3 size={16} /> Corrigir
+                  <RotateCcw size={16} /> Reposição
                 </button>
                 <button
-                  onClick={() => setAcaoSolicitacao('rejeitar')}
+                  onClick={() => setAcaoOcorrencia('rejeitar')}
                   style={{
-                    flex: 1, padding: '0.6rem', borderRadius: 8, border: acaoSolicitacao === 'rejeitar' ? '2px solid #DC2626' : '1px solid var(--border-color)',
-                    background: acaoSolicitacao === 'rejeitar' ? '#FEF2F2' : '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem', color: '#DC2626'
+                    flex: 1, padding: '0.6rem', borderRadius: 8, border: acaoOcorrencia === 'rejeitar' ? '2px solid #DC2626' : '1px solid var(--border-color)',
+                    background: acaoOcorrencia === 'rejeitar' ? '#FEF2F2' : '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem', color: '#DC2626'
                   }}
                 >
                   <XCircle size={16} /> Rejeitar
@@ -424,49 +418,52 @@ export const GerenciaDashboardPage = () => {
               </div>
             </div>
 
-            {acaoSolicitacao === 'corrigir' && (
+            {(acaoOcorrencia === 'rejeitar' || acaoOcorrencia === 'reposicao') && (
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                  Horário de Saída Corrigido: <span style={{ color: '#EF4444' }}>*</span>
+                  Observação: <span style={{ color: '#EF4444' }}>*</span>
                 </label>
-                <input
-                  type="time"
-                  value={saidaCorrigida}
-                  onChange={e => setSaidaCorrigida(e.target.value)}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: 8, border: '1.5px solid var(--border-color)', fontSize: '0.9rem', outline: 'none' }}
+                <textarea
+                  rows={3}
+                  value={observacaoOcorrencia}
+                  onChange={e => setObservacaoOcorrencia(e.target.value)}
+                  placeholder={acaoOcorrencia === 'rejeitar' ? 'Informe o motivo da rejeição (obrigatório)...' : 'Informe a justificativa para a reposição (obrigatório)...'}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: 8, border: '1.5px solid var(--border-color)', fontSize: '0.9rem', outline: 'none' }}
                 />
               </div>
             )}
 
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                Parecer Administrativo: <span style={{ color: '#EF4444' }}>*</span>
-              </label>
-              <textarea
-                rows={3}
-                value={parecerSolicitacao}
-                onChange={e => setParecerSolicitacao(e.target.value)}
-                placeholder={acaoSolicitacao === 'rejeitar' ? 'Informe o motivo da rejeição (obrigatório)...' : 'Descreva o parecer administrativo...'}
-                style={{ width: '100%', padding: '0.75rem', borderRadius: 8, border: '1.5px solid var(--border-color)', fontSize: '0.9rem', outline: 'none' }}
-              />
-            </div>
+            {acaoOcorrencia === 'aprovar' && (
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                  Observação (opcional):
+                </label>
+                <textarea
+                  rows={2}
+                  value={observacaoOcorrencia}
+                  onChange={e => setObservacaoOcorrencia(e.target.value)}
+                  placeholder="Observação administrativa (opcional)..."
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: 8, border: '1.5px solid var(--border-color)', fontSize: '0.9rem', outline: 'none' }}
+                />
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setModalSolicitacao(null); setParecerSolicitacao(''); setSaidaCorrigida(''); }} className="btn-secondary" style={{ background: '#E2E8F0', color: '#334155' }}>
+              <button onClick={() => { setModalSolicitacao(null); setObservacaoOcorrencia(''); setAcaoOcorrencia('aprovar'); }} className="btn-secondary" style={{ background: '#E2E8F0', color: '#334155' }}>
                 Cancelar
               </button>
               <button
-                onClick={handleProcessarSolicitacao}
-                disabled={processandoSolicitacao}
+                onClick={handleProcessarOcorrencia}
+                disabled={processandoOcorrencia}
                 className="btn-primary"
                 style={{
-                  background: acaoSolicitacao === 'aprovar' ? '#16A34A' : acaoSolicitacao === 'corrigir' ? '#D97706' : '#DC2626'
+                  background: acaoOcorrencia === 'aprovar' ? '#16A34A' : acaoOcorrencia === 'reposicao' ? '#D97706' : '#DC2626'
                 }}
               >
-                {processandoSolicitacao ? 'Processando...' : (
-                  acaoSolicitacao === 'aprovar' ? 'Aprovar Solicitação' :
-                  acaoSolicitacao === 'corrigir' ? 'Aplicar Correção' :
-                  'Rejeitar Solicitação'
+                {processandoOcorrencia ? 'Processando...' : (
+                  acaoOcorrencia === 'aprovar' ? 'Aprovar Ocorrência' :
+                  acaoOcorrencia === 'reposicao' ? 'Encaminhar p/ Reposição' :
+                  'Rejeitar Ocorrência'
                 )}
               </button>
             </div>

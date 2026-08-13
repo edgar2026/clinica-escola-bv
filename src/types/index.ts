@@ -87,6 +87,7 @@ export interface Ponto {
   saida_sugerida?: string;
   horario_firmado_inicio?: string;
   horario_firmado_fim?: string;
+  justificativa_id?: string;
 }
 
 export interface HistoricoPontoResponse {

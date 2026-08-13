@@ -28,6 +28,14 @@ export interface AnalisarSolicitacaoResponse {
   novo_status?: string;
 }
 
+export interface AnalisarOcorrenciaResponse {
+  sucesso: boolean;
+  mensagem: string;
+  acao?: string;
+  novo_status_justificativa?: string;
+  novo_status_ponto?: string;
+}
+
 export const pontoService = {
   async registrarPonto(alunoId?: string): Promise<RegistrarPresencaResponse> {
     const alunoIdEff = alunoId || await getAlunoId();
@@ -156,6 +164,22 @@ export const pontoService = {
     return data as AnalisarSolicitacaoResponse;
   },
 
+  async analisarOcorrencia(
+    justificativaId: string,
+    acao: 'aprovar' | 'rejeitar' | 'reposicao',
+    observacao?: string
+  ): Promise<AnalisarOcorrenciaResponse> {
+    const { data, error } = await supabase
+      .rpc('analisar_ocorrencia', {
+        p_justificativa_id: Number(justificativaId),
+        p_acao: acao,
+        p_observacao: observacao || null,
+      });
+
+    if (error) throw error;
+    return data as AnalisarOcorrenciaResponse;
+  },
+
   async getSolicitacoesPendentes(): Promise<Ponto[]> {
     const { data, error } = await supabase
       .from('justificativas')
@@ -196,6 +220,7 @@ export const pontoService = {
 
       results.push({
         id: String(j.id),
+        justificativa_id: String(j.id),
         ponto_id: String(j.ponto_id),
         aluno_id: String(aluno?.id || ''),
         data: String(ponto?.data || ''),
