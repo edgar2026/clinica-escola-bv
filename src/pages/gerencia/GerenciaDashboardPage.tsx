@@ -319,33 +319,52 @@ export const GerenciaDashboardPage = () => {
                 <tr>
                   <th>Aluno (Matrícula)</th>
                   <th>Data</th>
-                  <th>Entrada</th>
-                  <th>Situação</th>
-                  <th>Justificativa do Aluno</th>
+                  <th>Horário Firmado</th>
+                  <th>Entrada Real</th>
+                  <th>Saída Solicitada</th>
+                  <th>Diferença</th>
+                  <th>Tipo</th>
+                  <th>Justificativa</th>
                   <th>Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {solicitacoes.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--status-green)', padding: '1.5rem' }}>✅ Nenhuma solicitação pendente no momento.</td></tr>
-                ) : solicitacoes.map(s => (
-                  <tr key={s.id} style={{ backgroundColor: '#FFF7ED' }}>
-                    <td><strong>{s.aluno_nome}</strong> ({s.matricula})</td>
-                    <td><span className="badge-vaga amarelo">{formatarData(s.data || s.data_falta || '')}</span></td>
-                    <td>{s.hora_entrada || '-'}</td>
-                    <td>
-                      <span className="badge-vaga amarelo" style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FDBA74' }}>
-                        {s.tipo === 'ajuste_saida' ? '⏰ Ajuste de Saída' : '📝 Justificativa'}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.85rem', maxWidth: 280 }}>{s.descricao || s.justificativa || '-'}</td>
-                    <td>
-                      <button onClick={() => { setModalSolicitacao(s); setAcaoSolicitacao('aprovar'); setParecerSolicitacao(''); setSaidaCorrigida(''); }} className="btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
-                        Analisar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--status-green)', padding: '1.5rem' }}>✅ Nenhuma solicitação pendente no momento.</td></tr>
+                ) : solicitacoes.map(s => {
+                  const diffMinutos = s.hora_entrada && s.horario_firmado_inicio
+                    ? (parseInt(s.hora_entrada.split(':')[0]) * 60 + parseInt(s.hora_entrada.split(':')[1])) -
+                      (parseInt(s.horario_firmado_inicio.split(':')[0]) * 60 + parseInt(s.horario_firmado_inicio.split(':')[1]))
+                    : null;
+
+                  return (
+                    <tr key={s.id} style={{ backgroundColor: '#FFF7ED' }}>
+                      <td><strong>{s.aluno_nome}</strong> ({s.matricula})</td>
+                      <td><span className="badge-vaga amarelo">{formatarData(s.data || s.data_falta || '')}</span></td>
+                      <td style={{ fontSize: '0.85rem' }}>{s.horario_firmado_inicio && s.horario_firmado_fim ? `${s.horario_firmado_inicio}–${s.horario_firmado_fim}` : '-'}</td>
+                      <td>{s.hora_entrada || '-'}</td>
+                      <td style={{ fontSize: '0.85rem' }}>{s.saida_sugerida || '-'}</td>
+                      <td style={{ fontSize: '0.85rem' }}>
+                        {diffMinutos !== null ? (
+                          <span style={{ color: diffMinutos > 0 ? '#DC2626' : diffMinutos < 0 ? '#D97706' : '#16A34A', fontWeight: 600 }}>
+                            {diffMinutos > 0 ? `+${diffMinutos}min (atraso)` : diffMinutos < 0 ? `${diffMinutos}min (antecipado)` : 'No horário'}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td>
+                        <span className="badge-vaga amarelo" style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FDBA74', whiteSpace: 'nowrap' }}>
+                          {s.tipo === 'ajuste_saida' ? '⏰ Ajuste de Saída' : '📝 Justificativa'}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.85rem', maxWidth: 200 }}>{s.descricao || s.justificativa || '-'}</td>
+                      <td>
+                        <button onClick={() => { setModalSolicitacao(s); setAcaoSolicitacao('aprovar'); setParecerSolicitacao(''); setSaidaCorrigida(''); }} className="btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                          Analisar
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -363,9 +382,10 @@ export const GerenciaDashboardPage = () => {
             <div style={{ background: '#F8FAFC', padding: '1rem', borderRadius: 8, fontSize: '0.85rem', marginBottom: '1.25rem', border: '1px solid var(--border-color)' }}>
               <div><strong>Aluno:</strong> {modalSolicitacao.aluno_nome} ({modalSolicitacao.matricula})</div>
               <div><strong>Data:</strong> {formatarData(modalSolicitacao.data || '')}</div>
-              <div><strong>Entrada:</strong> {modalSolicitacao.hora_entrada || '-'}</div>
+              <div><strong>Horário Firmado:</strong> {modalSolicitacao.horario_firmado_inicio && modalSolicitacao.horario_firmado_fim ? `${modalSolicitacao.horario_firmado_inicio}–${modalSolicitacao.horario_firmado_fim}` : 'Não informado'}</div>
+              <div><strong>Entrada Real:</strong> {modalSolicitacao.hora_entrada || '-'}</div>
+              <div><strong>Saída Solicitada:</strong> {modalSolicitacao.saida_sugerida || '-'}</div>
               <div><strong>Tipo:</strong> <span style={{ color: '#9A3412', fontWeight: 700 }}>{modalSolicitacao.tipo === 'ajuste_saida' ? 'Ajuste de Saída' : 'Justificativa'}</span></div>
-              <div><strong>Saída Sugerida:</strong> {modalSolicitacao.descricao?.includes('ajuste') ? (modalSolicitacao as unknown as Record<string, string>)['saida_sugerida'] || '-' : '-'}</div>
               <div><strong>Justificativa:</strong> <em>"{modalSolicitacao.descricao || modalSolicitacao.justificativa}"</em></div>
             </div>
 

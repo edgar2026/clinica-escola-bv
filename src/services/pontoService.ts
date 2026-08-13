@@ -89,16 +89,36 @@ export const pontoService = {
     pontoId: string,
     motivo: string,
     descricao: string,
-    _anexoUrl?: string
+    anexoUrl?: string
   ): Promise<{ mensagem: string }> {
-    const { error } = await supabase
+    const { data: ponto, error: pontoError } = await supabase
       .from('pontos')
-      .update({ observacao: `${motivo}: ${descricao}`, status_frequencia: 'aguardando_validacao' } as never)
+      .select('aluno_id')
       .eq('id', pontoId)
-      .select()
       .single();
 
-    if (error) throw error;
+    if (pontoError || !ponto) throw new Error('Registro não encontrado.');
+
+    const { error: justError } = await supabase
+      .from('justificativas')
+      .insert({
+        aluno_id: ponto.aluno_id,
+        ponto_id: Number(pontoId),
+        motivo,
+        descricao,
+        arquivo_comprovante: anexoUrl || null,
+        status: 'pendente',
+      } as never);
+
+    if (justError) throw justError;
+
+    const { error: pontoUpdateError } = await supabase
+      .from('pontos')
+      .update({ observacao: `${motivo}: ${descricao}`, status_frequencia: 'aguardando_validacao' } as never)
+      .eq('id', pontoId);
+
+    if (pontoUpdateError) throw pontoUpdateError;
+
     return { mensagem: 'Justificativa submetida com sucesso.' };
   },
 
@@ -145,11 +165,36 @@ export const pontoService = {
 
     if (error) throw error;
 
-    return (data || []).map((j: Record<string, unknown>) => {
+    const results: Ponto[] = [];
+
+    for (const j of (data || []) as Record<string, unknown>[]) {
       const ponto = j.pontos as Record<string, unknown> | null;
       const aluno = ponto?.alunos as Record<string, unknown> | null;
       const usuario = aluno?.usuarios as Record<string, unknown> | null;
-      return {
+
+      let horarioFirmadoInicio = '';
+      let horarioFirmadoFim = '';
+
+      if (aluno?.id && ponto?.data) {
+        const pontoDate = new Date(ponto.data as string + 'T12:00:00');
+        let dow = pontoDate.getDay();
+        if (dow === 0) dow = 7;
+
+        const { data: gradeData } = await supabase
+          .from('grade_semanal_selecoes')
+          .select('hora_inicio, hora_fim')
+          .eq('aluno_id', Number(aluno.id))
+          .eq('confirmado', true)
+          .eq('dia_semana', dow)
+          .limit(1);
+
+        if (gradeData && gradeData.length > 0) {
+          horarioFirmadoInicio = String(gradeData[0].hora_inicio || '');
+          horarioFirmadoFim = String(gradeData[0].hora_fim || '');
+        }
+      }
+
+      results.push({
         id: String(j.id),
         ponto_id: String(j.ponto_id),
         aluno_id: String(aluno?.id || ''),
@@ -169,7 +214,12 @@ export const pontoService = {
         arquivo_comprovante: String(j.arquivo_comprovante || ''),
         tipo: String(j.motivo || ''),
         justificativa: String(j.descricao || ''),
-      } as Ponto;
-    });
+        saida_sugerida: String(j.saida_sugerida || ''),
+        horario_firmado_inicio: horarioFirmadoInicio,
+        horario_firmado_fim: horarioFirmadoFim,
+      } as Ponto);
+    }
+
+    return results;
   },
 };

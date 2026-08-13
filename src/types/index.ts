@@ -84,6 +84,9 @@ export interface Ponto {
   justificativa?: string;
   status?: string;
   validacao_parecer?: string;
+  saida_sugerida?: string;
+  horario_firmado_inicio?: string;
+  horario_firmado_fim?: string;
 }
 
 export interface HistoricoPontoResponse {

@@ -232,8 +232,8 @@ export const RegistroPontoPage = () => {
           </div>
 
           <div style={{ borderTop: '1px solid #E2E8F0', padding: '1rem 1.25rem', background: '#F8FAFC' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              <strong style={{ color: 'var(--text-dark)' }}>REGISTRO SUJEITO À AUDITORIA:</strong> Ao registrar entrada ou saída, seu horário será registrado. Inconsistências ou manipulações poderão ser identificadas e encaminhadas à equipe administrativa.
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6, textAlign: 'center' }}>
+              <strong style={{ color: 'var(--text-dark)' }}>REGISTRO SUJEITO À AUDITORIA</strong>
             </div>
           </div>
         </div>
