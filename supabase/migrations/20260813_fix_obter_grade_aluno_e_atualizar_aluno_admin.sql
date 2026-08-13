@@ -136,6 +136,8 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.atualizar_aluno_admin(p_aluno_id integer, p_carga_horaria_semanal integer, p_curso_id integer, p_periodo_id integer, p_turno_id integer, p_setor_id integer, p_situacao text, p_categoria_carga_id integer);
+
 CREATE OR REPLACE FUNCTION public.atualizar_aluno_admin(
   p_aluno_id integer,
   p_carga_horaria_semanal integer DEFAULT NULL::integer,
@@ -217,4 +219,5 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.obter_grade_aluno(integer) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.atualizar_aluno_admin(integer, integer, integer, integer, integer, integer, integer, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.atualizar_aluno_admin(integer, integer, integer, integer, integer, integer, integer, text) TO authenticated, service_role;
