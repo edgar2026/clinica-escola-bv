@@ -110,7 +110,6 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
   const cargaHorariaTotal = Number(metricas.cargaHorariaTotal) || 40;
   const horasCumpridas = Number(metricas.horasCumpridasTotal) || 0;
   const horasPendentes = Number(metricas.horasPendentes) || 0;
-  const semanasNecessarias = Number(metricas.semanasNecessarias) || 0;
   const totalHorasFirmadas = Number(metricas.totalHorasFirmadas) || 0;
   const atrasos = Number(metricas.atrasos) || 0;
   const faltas = Number(metricas.faltas) || 0;
@@ -166,7 +165,6 @@ export const AlunoDashboardPage = ({ setActiveTab }: { setActiveTab: (tab: strin
           </div>
         </MetricCard>
         <MetricCard label="Carga Semanal Firmada" value={firmado ? `${totalHorasFirmadas}h / ${categoriaCarga}h` : 'Não firmado'} accent={firmado ? 'accent-green' : ''} />
-        <MetricCard label="Semanas Previstas" value={`${semanasNecessarias} semanas`} accent="accent-green" />
         <MetricCard label="Horas Realizadas" value={`${horasCumpridas}h de ${cargaHorariaTotal}h`} accent="accent-green" />
         <MetricCard label="Horas Pendentes" value={`${horasPendentes}h`} accent="accent-yellow" />
         <MetricCard label="Atrasos" value={String(atrasos)} />

@@ -15,9 +15,10 @@ Contexto completo do projeto **Clínica-Escola UNINASSAU** para uso em sessões 
 
 - **Projeto:** `dhqcbtdbkdbvbxgddjqh`
 - **URL:** `https://dhqcbtdbkdbvbxgddjqh.supabase.co`
-- **MCP:** `supabase-clinica-escola` (remoto, habilitado — a partir de 2026-08-13 também aplica migrations)
-- **MCP URL:** `https://mcp.supabase.com/mcp?project_ref=dhqcbtdbkdbvbxgddjqh`
-- **Permissões:** Leitura (tabelas, migrations, edge functions, logs, advisors) + `apply_migration` (DDL) via MCP
+- **MCP:** `supabase-clinica-escola` (remoto, habilitado — atualizado em 2026-08-18)
+- **PROJECT_REF:** `dhqcbtdbkdbvbxgddjqh`
+- **Permissões:** Leitura (tabelas, views, migrations, RLS, edge functions) — modo read-only para validação
+- **Teste de conexão (2026-08-18):** Pendente — aguardando reinicialização do OpenCode
 - **Teste de conexão (2026-08-11):** ✅ 30 tabelas, 26 migrations, 1 edge function (`excluir-usuario`)
 - **Verificação de chaves (2026-08-11):** ✅ MCP retorna URL e anon key corretas; publishable key disponível mas não utilizada (supabase-js v2.110+ suporta)
 - **Variáveis (.env):**
@@ -1779,3 +1780,44 @@ Fixar o fluxo completo de Registro de Presença para produção: o aluno só pod
 | `src/services/pontoService.ts` | Modificado (tipos + getStatusHoje) |
 | `src/pages/aluno/RegistroPontoPage.tsx` | Reescrito completamente |
 | `CONTEXTO_SISTEMA.md` | Atualizado (esta sessão) |
+
+---
+
+## Sessão: Remoção do Cartão "Semanas Previstas" do Dashboard do Aluno
+
+### Objetivo
+Remover a exibição do cartão "Semanas Previstas" do Dashboard do Aluno, mantendo o cálculo internamente para uso futuro (recorrência do horário firmado, cálculo de período previsto, acompanhamento de carga total e controle interno).
+
+### Alteração no frontend
+
+**1. `src/pages/aluno/AlunoDashboardPage.tsx`**
+- Removido o `<MetricCard label="Semanas Previstas" .../>` da interface
+- Removida a extração da variável `semanasNecessarias` do objeto `metricas` (linha que fazia `Number(metricas.semanasNecessarias)`)
+- Cálculo de `semanasNecessarias` **preservado** em `carregarDados` (linha 50) e no objeto `metricas` (linha 66) — mantido para uso interno do sistema
+- Grid de métricas reduzido de 7 para 6 cartões: Carga Total, Carga Semanal Firmada, Horas Realizadas, Horas Pendentes, Atrasos, Faltas
+- Layout responsivo preservado: 3 colunas (desktop), 2 colunas (tablet ≤768px), 1 coluna (mobile ≤480px)
+
+### Não alterado
+- Cálculos de carga horária, semanas, presenças e frequência — intactos
+- Banco de dados, RPCs, Grade Semanal, Horário Firmado e recorrência — sem modificações
+- `MeuHorarioFirmadoPage.tsx` — continua exibindo "Semanas Previstas" (página diferente do aluno)
+- CSS `metrics-grid` — sem alterações (6 cartões se encaixam perfeitamente no grid responsivo)
+
+### Validação
+
+| # | Verificação | Resultado |
+|---|-------------|-----------|
+| 1 | `npx tsc --noEmit` — 0 erros | **PASS** |
+| 2 | `npm run build` — 1545 módulos, 238KB gzip 63KB | **PASS** |
+| 3 | Cartão "Semanas Previstas" removido da interface | **PASS** |
+| 4 | Cálculo `semanasNecessarias` preservado internamente | **PASS** |
+| 5 | 6 cartões restantes: Carga Total, Carga Semanal Firmada, Horas Realizadas, Horas Pendentes, Atrasos, Faltas | **PASS** |
+| 6 | Grid responsivo: 3 cols desktop, 2 tablet, 1 mobile | **PASS** |
+| 7 | Nenhum dado de teste criado no Supabase | **PASS** |
+| 8 | Nenhum cálculo, banco de dados ou RPC alterado | **PASS** |
+
+### Arquivos modificados
+
+| Arquivo | Ação |
+|---------|------|
+| `src/pages/aluno/AlunoDashboardPage.tsx` | Removido cartão "Semanas Previstas" da interface |
